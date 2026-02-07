@@ -1,0 +1,51 @@
+name: Build local Pokemon card name index
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC (weekly)
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest card data
+        run: |
+          curl -L -o cards.json https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/cards/en.json
+
+      - name: Build minimal name index
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const cards = JSON.parse(fs.readFileSync('cards.json','utf8'));
+          // Keep only the fields you need for fast lookup
+          const index = cards.map(c => ({
+            name: c.name,
+            setId: c.set?.id || "",
+            number: c.number || ""
+          }));
+
+          // Optional: sort by name for nicer suggestion lists
+          index.sort((a,b)=>a.name.localeCompare(b.name));
+
+          // Save minified JSON
+          fs.writeFileSync('card-names.min.json', JSON.stringify(index));
+          console.log('Wrote card-names.min.json:', index.length, 'records');
+          NODE
+
+      - name: Cleanup
+        run: rm -f cards.json
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add card-names.min.json
+          git commit -m "Update card name index" || echo "No changes"
+          git push
