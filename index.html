@@ -36,15 +36,19 @@
     .small { font-size: 13px; opacity:.85; }
     .hint { font-size:12px; opacity:.8; line-height:1.35; }
     .grid { display:grid; grid-template-columns: 1fr; gap:10px; }
-    @media (min-width: 800px){ .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 860px){ .grid { grid-template-columns: 1fr 1fr; } }
 
     .results { display:grid; gap:10px; }
-    .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; display:grid; grid-template-columns: 86px 1fr; gap:10px; align-items:start; }
+    .resultItem {
+      border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111;
+      display:grid; grid-template-columns: 86px 1fr; gap:10px; align-items:start;
+    }
     .thumb { width:86px; height:auto; border-radius:10px; border:1px solid #2a2a2a; background:#0a0a0a; }
     .title { font-weight:700; }
     .meta { font-size:13px; opacity:.85; margin-top:2px; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .divider { border:0; border-top:1px solid #262626; margin:12px 0; }
+
     .toggle {
       display:flex; align-items:center; gap:8px;
       padding: 6px 10px; border-radius: 999px;
@@ -52,6 +56,17 @@
       font-size: 13px;
     }
     .toggle input { transform: scale(1.15); }
+
+    .errBox {
+      display:none;
+      margin-top:10px;
+      background:#2a1010;
+      border:1px solid #6b1f1f;
+      padding:10px;
+      border-radius:12px;
+      font-size:13px;
+      white-space:pre-wrap;
+    }
   </style>
 </head>
 
@@ -59,7 +74,7 @@
 <header>
   <div class="row" style="justify-content:space-between;">
     <h1>Poké Locator</h1>
-    <span class="pill">Search on demand • Add custom</span>
+    <span class="pill">Search on demand • Add custom • Save locations</span>
   </div>
 </header>
 
@@ -69,20 +84,20 @@
     <h2 style="margin:0 0 10px 0; font-size:16px;">Search the card database</h2>
 
     <div class="row">
-      <input id="q" placeholder="Search (e.g., Cacnea, Rare Candy, Iono)" style="flex:1;">
+      <input id="q" placeholder="Search (e.g., Iono, Rare Candy, Boss's Orders)" style="flex:1;">
       <button id="searchBtn" class="primary">Search</button>
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="set" placeholder="Set id (optional, e.g., sv3)" class="mono" style="width:160px;">
-      <input id="number" placeholder="# (optional)" class="mono" style="width:120px;">
+      <input id="set" placeholder="Set id (optional, e.g., sv3)" class="mono" style="width:170px;">
+      <input id="number" placeholder="# (optional)" class="mono" style="width:130px;">
 
-      <label class="toggle" title="Exact match searches name:&quot;Iono&quot; instead of name:*iono*">
+      <label class="toggle" title="Exact uses name:&quot;Iono&quot; ; otherwise contains search (name:*iono*)">
         <input type="checkbox" id="exactToggle">
         Exact
       </label>
 
-      <select id="pageSize" style="width:140px;">
+      <select id="pageSize" style="width:150px;">
         <option value="24">24</option>
         <option value="48" selected>48</option>
         <option value="96">96</option>
@@ -93,24 +108,27 @@
     </div>
 
     <div class="row" style="margin-top:10px;">
+      <button id="prevBtn" disabled>Prev</button>
+      <button id="nextBtn" disabled>Next</button>
+      <span class="pill mono" id="pagePill">Page 1</span>
+      <span class="pill mono" id="totalPill">Total: —</span>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
       <input id="apiKey" placeholder="Optional API key (X-Api-Key)" style="flex:1;">
       <button id="saveKey">Save Key</button>
       <button id="clearKey" class="warn">Clear</button>
     </div>
 
     <div class="hint" style="margin-top:8px;">
-      Search-on-demand only. Tip: type <b>3+ letters</b>, or use <b>set id + number</b> for perfect precision.
+      Tip: Use <b>3+ letters</b> (or set/number). Exact is best when you know the name.
     </div>
 
-    <div class="row" style="margin-top:10px;">
-      <button id="prevBtn" disabled>Prev</button>
-      <button id="nextBtn" disabled>Next</button>
-      <span class="pill mono" id="pagePill">Page 1</span>
-    </div>
+    <div id="errBox" class="errBox"></div>
 
     <hr class="divider">
 
-    <div class="small" style="margin-bottom:6px;">Assign location for selected result</div>
+    <div class="small" style="margin-bottom:6px;">Choose location</div>
     <div class="row">
       <button class="pillBtn" data-loc="A-SUPPORTER">A • Supporter</button>
       <button class="pillBtn" data-loc="A-ITEM">A • Item</button>
@@ -124,7 +142,7 @@
         <option>B</option><option>C</option><option>D</option><option>E</option>
       </select>
       <select id="bulkChunk"></select>
-      <span class="pill mono" id="selectedLoc">No location selected</span>
+      <span class="pill mono" id="selectedLoc"></span>
     </div>
   </section>
 
@@ -133,11 +151,11 @@
 
     <div class="row">
       <input id="customName" placeholder="Custom card name" style="flex:1;">
-      <input id="customSet" placeholder="Set (optional)" class="mono" style="width:140px;">
-      <input id="customNum" placeholder="# (optional)" class="mono" style="width:120px;">
+      <input id="customSet" placeholder="Set (optional)" class="mono" style="width:150px;">
+      <input id="customNum" placeholder="# (optional)" class="mono" style="width:130px;">
     </div>
     <div style="margin-top:8px;">
-      <textarea id="customNotes" placeholder="Notes (optional): proxy, misprint, extra info…"></textarea>
+      <textarea id="customNotes" placeholder="Notes (optional): proxy, misprint, etc…"></textarea>
     </div>
 
     <div class="row" style="margin-top:10px;">
@@ -159,145 +177,126 @@
   // Config
   // --------------------------
   const API_BASE = "https://api.pokemontcg.io/v2/cards";
+  const DB_NAME = "poke_locator_db";
+  const STORE_ENTRIES = "entries";
+  const STORE_CUSTOM = "custom_cards";
 
   // --------------------------
-  // Bulk chunks 01..14
+  // DOM
   // --------------------------
-  const bulkChunk = document.getElementById('bulkChunk');
-  for (let i=1;i<=14;i++){
-    const opt = document.createElement('option');
-    opt.value = String(i).padStart(2,'0');
-    opt.textContent = String(i).padStart(2,'0');
-    bulkChunk.appendChild(opt);
-  }
+  const qEl = document.getElementById("q");
+  const setEl = document.getElementById("set");
+  const numEl = document.getElementById("number");
+  const exactEl = document.getElementById("exactToggle");
+  const pageSizeEl = document.getElementById("pageSize");
 
-  // --------------------------
-  // State: selected location
-  // --------------------------
-  let selectedLocValue = "";
-  const selectedLoc = document.getElementById("selectedLoc");
-
-  function bulkLoc(){
-    const r = document.getElementById("bulkRow").value;
-    const c = document.getElementById("bulkChunk").value;
-    return r + c;
-  }
-
-  document.getElementById("bulkRow").addEventListener("change", () => {
-    selectedLocValue = bulkLoc();
-    selectedLoc.textContent = selectedLocValue;
-  });
-  document.getElementById("bulkChunk").addEventListener("change", () => {
-    selectedLocValue = bulkLoc();
-    selectedLoc.textContent = selectedLocValue;
-  });
-
-  document.querySelectorAll(".pillBtn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      selectedLocValue = btn.dataset.loc;
-      selectedLoc.textContent = selectedLocValue;
-    });
-  });
-
-  // default to B01
-  selectedLocValue = bulkLoc();
-  selectedLoc.textContent = selectedLocValue;
-
-  // --------------------------
-  // Pagination state (NEW)
-  // --------------------------
-  let currentPage = 1;
-  let lastQueryString = "";
-  let lastTotalCount = 0;
+  const statusEl = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+  const errBox = document.getElementById("errBox");
 
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
   const pagePill = document.getElementById("pagePill");
+  const totalPill = document.getElementById("totalPill");
+
+  const selectedLocSpan = document.getElementById("selectedLoc");
+  const bulkRowEl = document.getElementById("bulkRow");
+  const bulkChunkEl = document.getElementById("bulkChunk");
+
+  // --------------------------
+  // Bulk chunks 01..14
+  // --------------------------
+  for (let i=1;i<=14;i++){
+    const opt = document.createElement("option");
+    opt.value = String(i).padStart(2,"0");
+    opt.textContent = String(i).padStart(2,"0");
+    bulkChunkEl.appendChild(opt);
+  }
+
+  // --------------------------
+  // Location selection
+  // --------------------------
+  let selectedLoc = "";
+
+  function bulkLoc(){
+    return bulkRowEl.value + bulkChunkEl.value;
+  }
+  function setSelectedLoc(v){
+    selectedLoc = v;
+    selectedLocSpan.textContent = selectedLoc || "No location";
+  }
+
+  bulkRowEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
+  bulkChunkEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
+
+  document.querySelectorAll(".pillBtn").forEach(btn=>{
+    btn.addEventListener("click", ()=> setSelectedLoc(btn.dataset.loc));
+  });
+
+  // default location
+  setSelectedLoc(bulkLoc());
+
+  // --------------------------
+  // Pagination state
+  // --------------------------
+  let currentPage = 1;
+  let lastQueryKey = "";
+  let lastTotalCount = 0;
 
   function updatePager(){
     pagePill.textContent = `Page ${currentPage}`;
+    totalPill.textContent = `Total: ${lastTotalCount ? lastTotalCount : "—"}`;
     prevBtn.disabled = (currentPage <= 1);
-    // Next button enabled only if we know there are more results
-    const pageSize = Number(document.getElementById("pageSize").value || "48");
+
+    const pageSize = Number(pageSizeEl.value || "48");
     const shownSoFar = currentPage * pageSize;
-    nextBtn.disabled = !(lastTotalCount > shownSoFar);
+
+    // if totalCount missing, disable Next to avoid weird loops
+    nextBtn.disabled = !(lastTotalCount && lastTotalCount > shownSoFar);
   }
 
-  prevBtn.addEventListener("click", async () => {
+  prevBtn.addEventListener("click", async ()=>{
     if (currentPage > 1) {
       currentPage--;
       await runSearch(true);
     }
   });
-
-  nextBtn.addEventListener("click", async () => {
-    const pageSize = Number(document.getElementById("pageSize").value || "48");
-    if (lastTotalCount > currentPage * pageSize) {
+  nextBtn.addEventListener("click", async ()=>{
+    const pageSize = Number(pageSizeEl.value || "48");
+    if (lastTotalCount && lastTotalCount > currentPage * pageSize) {
       currentPage++;
       await runSearch(true);
     }
   });
 
-  // Reset page to 1 whenever filters change
-  ["pageSize","exactToggle","set","number"].forEach(id => {
-    document.getElementById(id).addEventListener("change", () => { currentPage = 1; });
+  // reset page when filters change
+  [setEl, numEl, exactEl, pageSizeEl].forEach(el=>{
+    el.addEventListener("change", ()=> { currentPage = 1; });
   });
 
   // --------------------------
-  // IndexedDB (entries + custom)
+  // IndexedDB
   // --------------------------
-  const DB_NAME = "poke_locator_db";
-  const STORE = "entries";
-  const STORE_CUSTOM = "custom_cards";
   let db;
 
-  function openDB() {
-    return new Promise((resolve, reject) => {
+  function openDB(){
+    return new Promise((resolve,reject)=>{
       const req = indexedDB.open(DB_NAME, 2);
-      req.onupgradeneeded = () => {
-        const db = req.result;
+      req.onupgradeneeded = ()=>{
+        const d = req.result;
 
-        if (!db.objectStoreNames.contains(STORE)) {
-          const s = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
-          s.createIndex("name", "name", { unique: false });
-          s.createIndex("loc", "loc", { unique: false });
-          s.createIndex("name_loc", ["name","loc"], { unique: false });
+        if (!d.objectStoreNames.contains(STORE_ENTRIES)) {
+          const s = d.createObjectStore(STORE_ENTRIES, { keyPath: "id", autoIncrement: true });
+          s.createIndex("name", "name", { unique:false });
+          s.createIndex("loc", "loc", { unique:false });
         }
-
-        if (!db.objectStoreNames.contains(STORE_CUSTOM)) {
-          const c = db.createObjectStore(STORE_CUSTOM, { keyPath: "id", autoIncrement: true });
-          c.createIndex("name", "name", { unique: false });
+        if (!d.objectStoreNames.contains(STORE_CUSTOM)) {
+          const c = d.createObjectStore(STORE_CUSTOM, { keyPath: "id", autoIncrement: true });
+          c.createIndex("name", "name", { unique:false });
         }
       };
-      req.onsuccess = () => { db = req.result; resolve(db); };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  function addEntry(entry){
-    return new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).add(entry);
-      tx.oncomplete = ()=>resolve();
-      tx.onerror = ()=>reject(tx.error);
-    });
-  }
-
-  function addCustom(card){
-    return new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE_CUSTOM, "readwrite");
-      tx.objectStore(STORE_CUSTOM).add(card);
-      tx.oncomplete = ()=>resolve();
-      tx.onerror = ()=>reject(tx.error);
-    });
-  }
-
-  function deleteCustom(id){
-    return new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE_CUSTOM, "readwrite");
-      tx.objectStore(STORE_CUSTOM).delete(id);
-      tx.oncomplete = ()=>resolve();
-      tx.onerror = ()=>reject(tx.error);
+      req.onsuccess = ()=>{ db = req.result; resolve(db); };
+      req.onerror = ()=>reject(req.error);
     });
   }
 
@@ -310,10 +309,28 @@
     });
   }
 
+  function addToStore(storeName, obj){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(storeName,"readwrite");
+      tx.objectStore(storeName).add(obj);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  function deleteFromStore(storeName, id){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(storeName,"readwrite");
+      tx.objectStore(storeName).delete(id);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
   async function wipeAll(){
     await new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE,"readwrite");
-      const req = tx.objectStore(STORE).clear();
+      const tx = db.transaction(STORE_ENTRIES,"readwrite");
+      const req = tx.objectStore(STORE_ENTRIES).clear();
       req.onsuccess = ()=>resolve();
       req.onerror = ()=>reject(req.error);
     });
@@ -326,142 +343,94 @@
   }
 
   // --------------------------
-  // API key handling
+  // API key
   // --------------------------
   const apiKeyInput = document.getElementById("apiKey");
   apiKeyInput.value = localStorage.getItem("poke_api_key") || "";
 
-  document.getElementById("saveKey").addEventListener("click", () => {
+  document.getElementById("saveKey").addEventListener("click", ()=>{
     localStorage.setItem("poke_api_key", apiKeyInput.value.trim());
     setStatus("Key saved");
   });
-  document.getElementById("clearKey").addEventListener("click", () => {
+  document.getElementById("clearKey").addEventListener("click", ()=>{
     localStorage.removeItem("poke_api_key");
     apiKeyInput.value = "";
     setStatus("Key cleared");
   });
 
   // --------------------------
-  // UI helpers
+  // Helpers
   // --------------------------
-  const statusEl = document.getElementById("status");
-  const resultsEl = document.getElementById("results");
   function setStatus(s){ statusEl.textContent = s; }
+  function showError(msg){
+    errBox.style.display = "block";
+    errBox.textContent = msg;
+  }
+  function clearError(){
+    errBox.style.display = "none";
+    errBox.textContent = "";
+  }
   function escapeHtml(s){
     return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
   }
 
-  function cardSubtitleFromApi(c){
-    const setName = c.set?.name ? c.set.name : "";
-    const setId = c.set?.id ? c.set.id : "";
-    const num = c.number ? c.number : "";
-    const rarity = c.rarity ? c.rarity : "";
-    const parts = [];
-    if (setName) parts.push(setName);
-    if (setId) parts.push(`(${setId})`);
-    if (num) parts.push(`#${num}`);
-    if (rarity) parts.push(rarity);
-    return parts.join(" • ");
+  function normalizeName(s){
+    return (s||"").toLowerCase().replace(/\s+/g," ").trim();
   }
 
-  function renderCardResult(item){
-    const img = item.image || "";
-    const title = item.name || "(no name)";
-    const subtitle = item.subtitle || "";
-    const idPart = item.kind === "api" ? `<span class="pill mono">API</span>` : `<span class="pill mono">CUSTOM</span>`;
-    const locPart = item.lastLoc ? `<span class="pill mono">Last: ${escapeHtml(item.lastLoc)}</span>` : "";
-
-    const div = document.createElement("div");
-    div.className = "resultItem";
-    div.innerHTML = `
-      <div>
-        ${img ? `<img class="thumb" src="${escapeHtml(img)}" alt="">` : `<div class="thumb"></div>`}
-      </div>
-      <div>
-        <div class="title">${escapeHtml(title)} ${idPart}</div>
-        <div class="meta">${escapeHtml(subtitle)}</div>
-        <div class="actions">
-          <button class="good" data-action="save" data-kind="${item.kind}" data-id="${escapeHtml(String(item.id))}">
-            Save → ${escapeHtml(selectedLocValue)}
-          </button>
-          <button data-action="copy" data-text="${escapeHtml(title)}">Copy name</button>
-          ${locPart}
-          ${item.kind === "custom" ? `<button class="warn" data-action="delCustom" data-id="${escapeHtml(String(item.id))}">Delete custom</button>` : ""}
-        </div>
-        ${item.notes ? `<div class="meta" style="margin-top:6px;">${escapeHtml(item.notes)}</div>` : ""}
-      </div>
-    `;
-
-    div.querySelectorAll("button").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const action = btn.dataset.action;
-        if (action === "copy") {
-          await navigator.clipboard.writeText(btn.dataset.text || "");
-          setStatus("Copied");
-        }
-        if (action === "save") {
-          const entry = {
-            name: title,
-            variant: "",
-            loc: selectedLocValue,
-            ts: new Date().toISOString(),
-            source: item.kind,
-            cardId: item.kind === "api" ? item.id : null,
-            setId: item.setId || "",
-            number: item.number || ""
-          };
-          await addEntry(entry);
-          setStatus(`Saved to ${selectedLocValue}`);
-          await runSearch(true);
-        }
-        if (action === "delCustom") {
-          if (confirm("Delete this custom card?")) {
-            await deleteCustom(Number(btn.dataset.id));
-            setStatus("Custom deleted");
-            await runSearch(true);
-          }
-        }
-      });
-    });
-
-    resultsEl.appendChild(div);
+  function subtitleFromApi(c){
+    const setName = c.set?.name || "";
+    const setId = c.set?.id || "";
+    const num = c.number || "";
+    const rarity = c.rarity || "";
+    return [setName, setId ? `(${setId})` : "", num ? `#${num}` : "", rarity].filter(Boolean).join(" • ");
   }
 
-  // --------------------------
-  // Query building (UPDATED: exact toggle + 3-char guard)
-  // --------------------------
-  function buildQuery(){
-    const name = document.getElementById("q").value.trim();
-    const set = document.getElementById("set").value.trim();
-    const num = document.getElementById("number").value.trim();
-    const exact = document.getElementById("exactToggle").checked;
+  // Escape Lucene special chars for safety in name queries
+  // (keep it simple: strip quotes, escape colon/backslash)
+  function sanitizeForQuery(s){
+    return (s||"")
+      .replace(/"/g, "")       // remove quotes
+      .replace(/\\/g, "\\\\")  // escape backslash
+      .replace(/:/g, "\\:")    // escape colon
+      .trim();
+  }
+
+  function buildApiQuery(){
+    const nameRaw = qEl.value.trim();
+    const setId = setEl.value.trim();
+    const num = numEl.value.trim();
+    const exact = exactEl.checked;
 
     const clauses = [];
 
-    if (name) {
-      const n = name.replace(/"/g, "");
+    if (nameRaw) {
+      const n = sanitizeForQuery(nameRaw);
       if (exact) {
+        // exact phrase match
         clauses.push(`name:"${n}"`);
-      } else if (n.includes(" ")) {
-        const parts = n.split(/\s+/).filter(Boolean).map(p => `*${p}*`);
-        clauses.push(`name:${parts.join(" AND name:")}`);
       } else {
-        clauses.push(`name:*${n}*`);
+        // contains style:
+        // - one word => name:*word*
+        // - multiple words => require each word
+        const words = n.split(/\s+/).filter(Boolean);
+        if (words.length === 1) {
+          clauses.push(`name:*${words[0]}*`);
+        } else {
+          clauses.push(words.map(w => `name:*${w}*`).join(" AND "));
+        }
       }
-    } else {
-      // If no name, only allow if set/number provided
-      clauses.push(`name:*`);
     }
 
-    if (set) clauses.push(`set.id:${set}`);
-    if (num) clauses.push(`number:${num}`);
+    if (setId) clauses.push(`set.id:${sanitizeForQuery(setId)}`);
+    if (num) clauses.push(`number:${sanitizeForQuery(num)}`);
 
     return clauses.join(" AND ");
   }
 
-  async function fetchApiCards(q, pageSize, page){
+  async function fetchCards(query, pageSize, page){
     const url = new URL(API_BASE);
-    url.searchParams.set("q", q);
+    url.searchParams.set("q", query);
     url.searchParams.set("pageSize", String(pageSize));
     url.searchParams.set("page", String(page));
     url.searchParams.set("orderBy", "name");
@@ -472,33 +441,127 @@
     if (key) headers["X-Api-Key"] = key;
 
     const res = await fetch(url.toString(), { headers });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
-    const json = await res.json();
-    // json.totalCount exists in v2 responses
-    return { data: json.data || [], totalCount: json.totalCount || 0 };
+    const text = await res.text();
+
+    let json = null;
+    try { json = JSON.parse(text); } catch(e) {}
+
+    if (!res.ok) {
+      const detail = json?.message || json?.error || text || `HTTP ${res.status}`;
+      throw new Error(`API ${res.status}: ${detail}`);
+    }
+
+    return {
+      data: json?.data || [],
+      totalCount: typeof json?.totalCount === "number" ? json.totalCount : 0
+    };
+  }
+
+  function renderEmpty(msg){
+    resultsEl.innerHTML = `<div class="card">${escapeHtml(msg)}</div>`;
+  }
+
+  function renderCard(item){
+    const img = item.image || "";
+    const title = item.name || "(no name)";
+    const subtitle = item.subtitle || "";
+    const kindPill = item.kind === "api"
+      ? `<span class="pill mono">API</span>`
+      : `<span class="pill mono">CUSTOM</span>`;
+    const lastPill = item.lastLoc ? `<span class="pill mono">Last: ${escapeHtml(item.lastLoc)}</span>` : "";
+
+    const div = document.createElement("div");
+    div.className = "resultItem";
+    div.innerHTML = `
+      <div>${img ? `<img class="thumb" src="${escapeHtml(img)}" alt="">` : `<div class="thumb"></div>`}</div>
+      <div>
+        <div class="title">${escapeHtml(title)} ${kindPill}</div>
+        <div class="meta">${escapeHtml(subtitle)}</div>
+        <div class="actions">
+          <button class="good" data-action="save">Save → ${escapeHtml(selectedLoc)}</button>
+          <button data-action="copy">Copy name</button>
+          ${lastPill}
+          ${item.kind === "custom" ? `<button class="warn" data-action="del">Delete custom</button>` : ""}
+        </div>
+        ${item.notes ? `<div class="meta" style="margin-top:6px;">${escapeHtml(item.notes)}</div>` : ""}
+      </div>
+    `;
+
+    div.querySelector('[data-action="copy"]').addEventListener("click", async ()=>{
+      await navigator.clipboard.writeText(title);
+      setStatus("Copied");
+    });
+
+    div.querySelector('[data-action="save"]').addEventListener("click", async ()=>{
+      if (!selectedLoc) { alert("Select a location first."); return; }
+      await addToStore(STORE_ENTRIES, {
+        name: title,
+        loc: selectedLoc,
+        ts: new Date().toISOString(),
+        source: item.kind,
+        cardId: item.kind === "api" ? item.id : null,
+        setId: item.setId || "",
+        number: item.number || ""
+      });
+      setStatus(`Saved to ${selectedLoc}`);
+      await runSearch(true);
+    });
+
+    const delBtn = div.querySelector('[data-action="del"]');
+    if (delBtn) {
+      delBtn.addEventListener("click", async ()=>{
+        if (confirm("Delete this custom card?")) {
+          await deleteFromStore(STORE_CUSTOM, item.id);
+          setStatus("Custom deleted");
+          await runSearch(true);
+        }
+      });
+    }
+
+    resultsEl.appendChild(div);
   }
 
   // --------------------------
-  // Search runner (UPDATED: 3-char guard + pagination)
+  // Search flow
   // --------------------------
-  async function runSearch(isPaging=false){
+  async function renderCustomOnly(){
+    const customs = await getAll(STORE_CUSTOM);
+    if (!customs.length) {
+      renderEmpty("No results yet. Add a custom card or search by name.");
+      return;
+    }
+    resultsEl.innerHTML = "";
+    for (const c of customs) {
+      renderCard({
+        kind: "custom",
+        id: c.id,
+        name: c.name,
+        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
+        notes: c.notes || "",
+        image: "",
+        setId: c.setId || "",
+        number: c.number || ""
+      });
+    }
+  }
+
+  async function runSearch(isPaging){
+    clearError();
     resultsEl.innerHTML = "";
 
-    const qRaw = document.getElementById("q").value.trim();
-    const set = document.getElementById("set").value.trim();
-    const num = document.getElementById("number").value.trim();
+    const nameRaw = qEl.value.trim();
+    const setId = setEl.value.trim();
+    const num = numEl.value.trim();
 
-    // Guard: block truly empty searches
-    if (!qRaw && !set && !num){
+    // Guards
+    if (!nameRaw && !setId && !num) {
       setStatus("Type a name (or set/number)");
       lastTotalCount = 0;
       updatePager();
       await renderCustomOnly();
       return;
     }
-
-    // Guard: if name provided but too short, require set/num
-    if (qRaw && qRaw.length < 3 && !set && !num){
+    if (nameRaw && nameRaw.length < 3 && !setId && !num) {
       setStatus("Type at least 3 letters (or use set/number)");
       lastTotalCount = 0;
       updatePager();
@@ -506,71 +569,76 @@
       return;
     }
 
-    const pageSize = Number(document.getElementById("pageSize").value || "48");
-    const query = buildQuery();
+    const pageSize = Number(pageSizeEl.value || "48");
+    const query = buildApiQuery();
 
-    // If not paging and query changed, reset to page 1
-    if (!isPaging && query !== lastQueryString){
-      currentPage = 1;
-    }
-    lastQueryString = query;
+    // If query changed and not paging, reset page
+    const queryKey = `${query}::${pageSize}`;
+    if (!isPaging && queryKey !== lastQueryKey) currentPage = 1;
+    lastQueryKey = queryKey;
 
     setStatus("Searching…");
     updatePager();
 
-    let apiCards = [];
+    // Fetch API results
+    let api = { data: [], totalCount: 0 };
     try {
-      const r = await fetchApiCards(query, pageSize, currentPage);
-      apiCards = r.data;
-      lastTotalCount = r.totalCount;
+      api = await fetchCards(query, pageSize, currentPage);
     } catch (e) {
-      setStatus("API error (rate limit?)");
+      setStatus("API error");
+      showError(String(e.message || e));
       lastTotalCount = 0;
       updatePager();
+      // still show customs so app isn't "blank"
       await renderCustomOnly();
       return;
     }
 
-    // Load local saved entries for “Last” location
-    const entries = await getAll(STORE);
+    lastTotalCount = api.totalCount || 0;
+    updatePager();
+
+    // Last locations map (by name)
+    const entries = await getAll(STORE_ENTRIES);
     const lastLocByName = new Map();
     for (const e of entries) {
-      const key = (e.name||"").toLowerCase();
+      const key = normalizeName(e.name);
       if (!key) continue;
       const prev = lastLocByName.get(key);
-      if (!prev || (e.ts > prev.ts)) lastLocByName.set(key, { loc: e.loc, ts: e.ts });
+      if (!prev || e.ts > prev.ts) lastLocByName.set(key, { loc: e.loc, ts: e.ts });
     }
 
-    // Custom cards match the name filter (if present)
+    // Custom matches (only filter by name text)
     const customs = await getAll(STORE_CUSTOM);
-    const qLower = qRaw.toLowerCase();
+    const nameLower = nameRaw.toLowerCase();
     const customMatches = customs.filter(c => {
-      if (!qRaw) return true;
-      return (c.name||"").toLowerCase().includes(qLower);
+      if (!nameRaw) return true;
+      return normalizeName(c.name).includes(normalizeName(nameLower));
     });
 
+    // Render
+    resultsEl.innerHTML = "";
     for (const c of customMatches) {
-      const last = lastLocByName.get((c.name||"").toLowerCase());
-      renderCardResult({
+      const last = lastLocByName.get(normalizeName(c.name));
+      renderCard({
         kind: "custom",
         id: c.id,
         name: c.name,
         subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
-        image: "",
         notes: c.notes || "",
+        image: "",
         setId: c.setId || "",
         number: c.number || "",
         lastLoc: last ? last.loc : ""
       });
     }
 
-    for (const c of apiCards) {
-      const last = lastLocByName.get((c.name||"").toLowerCase());
-      renderCardResult({
+    for (const c of api.data) {
+      const last = lastLocByName.get(normalizeName(c.name));
+      renderCard({
         kind: "api",
         id: c.id,
         name: c.name,
-        subtitle: cardSubtitleFromApi(c),
+        subtitle: subtitleFromApi(c),
         image: c.images?.small || c.images?.large || "",
         setId: c.set?.id || "",
         number: c.number || "",
@@ -578,43 +646,22 @@
       });
     }
 
-    setStatus(`Found: ${customMatches.length} custom + ${apiCards.length} API`);
-    updatePager();
-  }
-
-  async function renderCustomOnly(){
-    resultsEl.innerHTML = "";
-    const customs = await getAll(STORE_CUSTOM);
-    if (!customs.length) {
-      resultsEl.innerHTML = `<div class="card">No results yet. Add a custom card or search by name.</div>`;
-      return;
-    }
-    for (const c of customs) {
-      renderCardResult({
-        kind: "custom",
-        id: c.id,
-        name: c.name,
-        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
-        image: "",
-        notes: c.notes || "",
-        setId: c.setId || "",
-        number: c.number || ""
-      });
-    }
+    const shown = customMatches.length + api.data.length;
+    setStatus(shown ? `Showing ${shown} results` : "No results");
+    if (!shown) renderEmpty("No results. Try a different search or add as custom.");
   }
 
   // --------------------------
-  // Custom add
+  // Custom add / export / wipe
   // --------------------------
-  document.getElementById("addCustom").addEventListener("click", async () => {
+  document.getElementById("addCustom").addEventListener("click", async ()=>{
     const name = document.getElementById("customName").value.trim();
     if (!name) return alert("Enter a custom card name.");
-
     const setId = document.getElementById("customSet").value.trim();
     const number = document.getElementById("customNum").value.trim();
     const notes = document.getElementById("customNotes").value.trim();
 
-    await addCustom({ name, setId, number, notes, created: new Date().toISOString() });
+    await addToStore(STORE_CUSTOM, { name, setId, number, notes, created: new Date().toISOString() });
 
     document.getElementById("customName").value = "";
     document.getElementById("customSet").value = "";
@@ -625,27 +672,21 @@
     await runSearch(false);
   });
 
-  // --------------------------
-  // Export / wipe
-  // --------------------------
-  document.getElementById("exportCsv").addEventListener("click", async () => {
-    const entries = await getAll(STORE);
+  document.getElementById("exportCsv").addEventListener("click", async ()=>{
+    const entries = await getAll(STORE_ENTRIES);
     const customs = await getAll(STORE_CUSTOM);
 
     const header = ["type","name","setId","number","loc","timestamp","notes","cardId"];
     const lines = [header.join(",")];
 
     for (const e of entries){
-      const row = [
-        "entry", e.name||"", e.setId||"", e.number||"", e.loc||"", e.ts||"", "", e.cardId||""
-      ].map(v => `"${String(v).replaceAll('"','""')}"`);
+      const row = ["entry", e.name||"", e.setId||"", e.number||"", e.loc||"", e.ts||"", "", e.cardId||""]
+        .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
-
     for (const c of customs){
-      const row = [
-        "custom", c.name||"", c.setId||"", c.number||"", "", c.created||"", c.notes||"", ""
-      ].map(v => `"${String(v).replaceAll('"','""')}"`);
+      const row = ["custom", c.name||"", c.setId||"", c.number||"", "", c.created||"", c.notes||"", ""]
+        .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
 
@@ -658,12 +699,12 @@
     URL.revokeObjectURL(url);
   });
 
-  document.getElementById("wipe").addEventListener("click", async () => {
-    if (confirm("This deletes ALL saved entries + custom cards on this iPhone. Continue?")) {
+  document.getElementById("wipe").addEventListener("click", async ()=>{
+    if (confirm("This deletes ALL saved entries + custom cards on this iPhone. Continue?")){
       await wipeAll();
       setStatus("Wiped");
-      lastTotalCount = 0;
       currentPage = 1;
+      lastTotalCount = 0;
       updatePager();
       await renderCustomOnly();
     }
@@ -672,12 +713,12 @@
   // --------------------------
   // Search events
   // --------------------------
-  document.getElementById("searchBtn").addEventListener("click", async () => {
+  document.getElementById("searchBtn").addEventListener("click", async ()=>{
     currentPage = 1;
     await runSearch(false);
   });
 
-  document.getElementById("q").addEventListener("keydown", async (e) => {
+  qEl.addEventListener("keydown", async (e)=>{
     if (e.key === "Enter") {
       currentPage = 1;
       await runSearch(false);
@@ -687,10 +728,10 @@
   // --------------------------
   // Init
   // --------------------------
-  (async () => {
+  (async ()=>{
     await openDB();
-    await renderCustomOnly();
     updatePager();
+    await renderCustomOnly();
 
     if ("serviceWorker" in navigator){
       try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
