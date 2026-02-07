@@ -2,8 +2,6 @@ name: Build local Pokemon card name index
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * 1"  # Mondays 06:00 UTC (weekly)
 
 permissions:
   contents: write
@@ -14,38 +12,74 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download latest card data
-        run: |
-          curl -L -o cards.json https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/cards/en.json
-
-      - name: Build minimal name index
+      - name: Build name index from Pokemon TCG API (paginated)
+        env:
+          POKETCG_API_KEY: ${{ secrets.POKETCG_API_KEY }}
         run: |
           node - <<'NODE'
           const fs = require('fs');
 
-          const cards = JSON.parse(fs.readFileSync('cards.json','utf8'));
-          // Keep only the fields you need for fast lookup
-          const index = cards.map(c => ({
-            name: c.name,
-            setId: c.set?.id || "",
-            number: c.number || ""
-          }));
+          const API = "https://api.pokemontcg.io/v2/cards";
+          const pageSize = 250; // max 250
+          let page = 1;
+          let totalCount = null;
+          let out = [];
 
-          // Optional: sort by name for nicer suggestion lists
-          index.sort((a,b)=>a.name.localeCompare(b.name));
+          async function fetchPage(p){
+            const url = new URL(API);
+            url.searchParams.set("page", String(p));
+            url.searchParams.set("pageSize", String(pageSize));
+            url.searchParams.set("select", "name,set.id,number"); // minimal fields
+            const headers = {};
+            if (process.env.POKETCG_API_KEY) headers["X-Api-Key"] = process.env.POKETCG_API_KEY;
 
-          // Save minified JSON
-          fs.writeFileSync('card-names.min.json', JSON.stringify(index));
-          console.log('Wrote card-names.min.json:', index.length, 'records');
+            const res = await fetch(url, { headers });
+            if (!res.ok) {
+              const txt = await res.text();
+              throw new Error(`API ${res.status}: ${txt.slice(0,300)}`);
+            }
+            return res.json();
+          }
+
+          (async ()=>{
+            while (true) {
+              const json = await fetchPage(page);
+              if (totalCount === null && typeof json.totalCount === "number") totalCount = json.totalCount;
+
+              const data = Array.isArray(json.data) ? json.data : [];
+              if (!data.length) break;
+
+              for (const c of data) {
+                out.push({
+                  name: c.name,
+                  setId: c.set?.id || "",
+                  number: c.number || ""
+                });
+              }
+
+              const got = out.length;
+              const more = totalCount ? got < totalCount : data.length === pageSize;
+              console.log(`Fetched page ${page}, total so far: ${got}${totalCount ? " / " + totalCount : ""}`);
+
+              if (!more) break;
+              page++;
+            }
+
+            // sort by name for nicer local search
+            out.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+
+            fs.writeFileSync("card-names.min.json", JSON.stringify(out));
+            console.log(`Wrote card-names.min.json with ${out.length} records`);
+          })().catch(err=>{
+            console.error(err);
+            process.exit(1);
+          });
           NODE
 
-      - name: Cleanup
-        run: rm -f cards.json
-
-      - name: Commit changes
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add card-names.min.json
-          git commit -m "Update card name index" || echo "No changes"
+          git commit -m "Update local card name index" || echo "No changes"
           git push
