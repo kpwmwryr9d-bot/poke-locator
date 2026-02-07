@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Poké Locator — Fast Log</title>
+  <title>Poké Locator — Name Logger</title>
 
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#111111">
@@ -25,7 +25,6 @@
       font-size: 16px; border-radius: 10px; border:1px solid #2a2a2a; background:#1c1c1c; color:#fff;
       padding: 10px 12px;
     }
-    textarea { width:100%; min-height: 60px; }
     button { cursor:pointer; }
     button.primary { background:#2a5bd7; border-color:#2a5bd7; }
     button.good { background:#1d7f43; border-color:#1d7f43; }
@@ -51,6 +50,9 @@
       overflow:hidden;
       z-index: 10;
       display:none;
+      max-height: 320px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .suggestItem {
       padding: 10px 12px;
@@ -64,8 +66,10 @@
     .suggestItem:first-child { border-top:0; }
     .suggestItem:hover { background:#171717; }
     .suggestRight { font-size:12px; opacity:.8; }
+
     .results { display:grid; gap:10px; }
     .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; }
+
     .divider { border:0; border-top:1px solid #262626; margin:12px 0; }
 
     .toggle {
@@ -93,14 +97,14 @@
 <header>
   <div class="row" style="justify-content:space-between;">
     <h1>Poké Locator</h1>
-    <span class="pill">Fast Log • Suggestions optional</span>
+    <span class="pill">API name search • no photos</span>
   </div>
 </header>
 
 <main class="grid">
 
   <section class="card">
-    <h2 style="margin:0 0 10px 0; font-size:16px;">Log a card name (fast)</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Log a card name</h2>
 
     <div class="suggestBox">
       <input id="name" autocomplete="off" placeholder="Type card name (e.g., Iono, Rare Candy)" style="width:100%;">
@@ -108,17 +112,11 @@
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <label class="toggle" title="Suggestions call the API (text-only). Turn off for offline-only.">
-        <input type="checkbox" id="suggestToggle" checked>
-        Suggestions
-      </label>
-
       <label class="toggle" title="Exact uses name:&quot;Iono&quot; ; otherwise contains (name:*iono*)">
         <input type="checkbox" id="exactToggle">
         Exact
       </label>
-
-      <span id="status" class="pill">Idle</span>
+      <span id="status" class="pill">Ready</span>
     </div>
 
     <div class="row" style="margin-top:10px;">
@@ -128,7 +126,7 @@
     </div>
 
     <div class="hint" style="margin-top:8px;">
-      This app logs names instantly. Suggestions are text-only and limited to 12 results for speed.
+      Suggestions start at <b>3+ letters</b> and return text only (name + set id + number). No images.
     </div>
 
     <div id="errBox" class="errBox"></div>
@@ -162,12 +160,12 @@
     <h2 style="margin:0 0 10px 0; font-size:16px;">Custom names + Find</h2>
 
     <div class="row">
-      <input id="customName" placeholder="Add a custom name (optional)" style="flex:1;">
+      <input id="customName" placeholder="Add custom name (optional)" style="flex:1;">
       <button id="addCustom" class="primary">Add Custom</button>
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Search logged names" style="flex:1;">
+      <input id="search" placeholder="Search your logged names" style="flex:1;">
       <button id="runSearch" class="primary">Search</button>
     </div>
 
@@ -200,8 +198,6 @@
   const suggestListEl = document.getElementById("suggestList");
   const statusEl = document.getElementById("status");
   const errBox = document.getElementById("errBox");
-
-  const suggestToggleEl = document.getElementById("suggestToggle");
   const exactToggleEl = document.getElementById("exactToggle");
 
   const apiKeyInput = document.getElementById("apiKey");
@@ -257,7 +253,7 @@
 
   function openDB(){
     return new Promise((resolve,reject)=>{
-      const req = indexedDB.open(DB_NAME, 3);
+      const req = indexedDB.open(DB_NAME, 4);
       req.onupgradeneeded = ()=>{
         const d = req.result;
         if (!d.objectStoreNames.contains(STORE_ENTRIES)) {
@@ -326,17 +322,10 @@
   // Helpers
   // --------------------------
   function setStatus(s){ statusEl.textContent = s; }
-  function showError(msg){
-    errBox.style.display = "block";
-    errBox.textContent = msg;
-  }
-  function clearError(){
-    errBox.style.display = "none";
-    errBox.textContent = "";
-  }
+  function showError(msg){ errBox.style.display="block"; errBox.textContent = msg; }
+  function clearError(){ errBox.style.display="none"; errBox.textContent = ""; }
   function normalize(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 
-  // Safe query sanitizer for lucene-ish syntax
   function sanitizeForQuery(s){
     return (s||"")
       .replace(/"/g,"")
@@ -345,20 +334,35 @@
       .trim();
   }
 
-  // Build a fast query for suggestions (TEXT ONLY)
-  function buildSuggestQuery(text){
+  function buildNameQuery(text){
     const exact = exactToggleEl.checked;
     const t = sanitizeForQuery(text);
     const words = t.split(/\s+/).filter(Boolean);
-
     if (!words.length) return "";
+
     if (exact) return `name:"${t}"`;
     if (words.length === 1) return `name:*${words[0]}*`;
     return words.map(w => `name:*${w}*`).join(" AND ");
   }
 
-  async function fetchSuggestions(text){
-    const q = buildSuggestQuery(text);
+  // --------------------------
+  // Local custom names (merge first)
+  // --------------------------
+  async function getCustomMatches(prefix){
+    const p = normalize(prefix);
+    if (!p) return [];
+    const customs = await getAll(STORE_CUSTOM);
+    return customs
+      .map(c => c.name)
+      .filter(n => normalize(n).includes(p))
+      .slice(0, 6);
+  }
+
+  // --------------------------
+  // API suggestions (name-only)
+  // --------------------------
+  async function fetchNameSuggestions(text){
+    const q = buildNameQuery(text);
     if (!q) return [];
 
     const url = new URL(API_BASE);
@@ -367,7 +371,7 @@
     url.searchParams.set("page", "1");
     url.searchParams.set("orderBy", "name");
 
-    // IMPORTANT for speed: no images, no big payload
+    // SPEED: no images, minimal fields
     url.searchParams.set("select", "id,name,set,number");
 
     const headers = {};
@@ -375,113 +379,88 @@
     if (key) headers["X-Api-Key"] = key;
 
     const res = await fetch(url.toString(), { headers });
-    const textBody = await res.text();
+    const body = await res.text();
     let json = null;
-    try { json = JSON.parse(textBody); } catch(e) {}
+    try { json = JSON.parse(body); } catch(e) {}
 
     if (!res.ok) {
-      const detail = json?.message || json?.error || textBody || `HTTP ${res.status}`;
+      const detail = json?.message || json?.error || body || `HTTP ${res.status}`;
       throw new Error(`API ${res.status}: ${detail}`);
     }
-
     return json?.data || [];
   }
 
   // --------------------------
-  // Suggestions rendering
+  // Suggestions UI
   // --------------------------
   function hideSuggestions(){
-    suggestListEl.style.display = "none";
-    suggestListEl.innerHTML = "";
+    suggestListEl.style.display="none";
+    suggestListEl.innerHTML="";
   }
 
   function showSuggestions(items){
     if (!items.length) { hideSuggestions(); return; }
     suggestListEl.innerHTML = "";
-    for (const c of items) {
+    for (const it of items){
       const div = document.createElement("div");
       div.className = "suggestItem";
-      const setId = c.set?.id ? c.set.id : "";
-      const num = c.number ? c.number : "";
-      div.innerHTML = `
-        <div>${c.name}</div>
-        <div class="suggestRight mono">${setId}${num ? " • #" + num : ""}</div>
-      `;
+      const right = it.kind === "custom"
+        ? "custom"
+        : `${(it.setId||"")}${it.number ? " • #" + it.number : ""}`;
+      div.innerHTML = `<div>${it.name}</div><div class="suggestRight mono">${right}</div>`;
       div.addEventListener("click", ()=>{
-        nameEl.value = c.name;
+        nameEl.value = it.name;
         hideSuggestions();
         setStatus("Picked ✓");
       });
       suggestListEl.appendChild(div);
     }
-    suggestListEl.style.display = "block";
+    suggestListEl.style.display="block";
   }
 
   // --------------------------
-  // Local custom names (shown first in suggestions)
-  // --------------------------
-  async function getCustomMatches(prefix){
-    const p = normalize(prefix);
-    if (!p) return [];
-    const customs = await getAll(STORE_CUSTOM);
-    const matches = customs
-      .map(c => c.name)
-      .filter(n => normalize(n).includes(p))
-      .slice(0, 6);
-    return matches;
-  }
-
-  // --------------------------
-  // Debounced suggestion engine
+  // Debounce logic
   // --------------------------
   let debounceTimer = null;
-  let lastSuggestToken = 0;
+  let lastToken = 0;
 
   async function runSuggest(){
     clearError();
 
     const text = nameEl.value.trim();
-    if (!suggestToggleEl.checked) { hideSuggestions(); return; }
+    if (text.length < 3) { hideSuggestions(); setStatus("Type 3+"); return; }
 
-    // guard: avoid spam + huge queries
-    if (text.length < 2) { hideSuggestions(); setStatus("Idle"); return; }
+    const token = ++lastToken;
+    setStatus("Searching…");
 
-    const token = ++lastSuggestToken;
-    setStatus("Suggesting…");
-
-    // Custom matches first (offline)
     const custom = await getCustomMatches(text);
 
-    // If still short, don’t call API (keeps it snappy)
-    if (text.length < 3) {
-      const items = custom.map(n => ({ name: n, set:{id:"custom"}, number:"" }));
-      showSuggestions(items);
-      setStatus(custom.length ? "Custom suggestions" : "Type 3+ for API");
-      return;
-    }
-
     try {
-      const apiItems = await fetchSuggestions(text);
-      if (token !== lastSuggestToken) return; // ignore stale
+      const api = await fetchNameSuggestions(text);
+      if (token !== lastToken) return;
 
-      // Merge: customs first, then API de-duped by name
       const seen = new Set(custom.map(n => normalize(n)));
       const merged = [];
+      for (const n of custom) merged.push({ kind:"custom", name:n, setId:"", number:"" });
 
-      for (const n of custom) merged.push({ name:n, set:{id:"custom"}, number:"" });
-      for (const c of apiItems) {
+      for (const c of api){
         const key = normalize(c.name);
         if (seen.has(key)) continue;
         seen.add(key);
-        merged.push(c);
+        merged.push({
+          kind:"api",
+          name:c.name,
+          setId: c.set?.id || "",
+          number: c.number || ""
+        });
         if (merged.length >= 12) break;
       }
 
       showSuggestions(merged);
-      setStatus(merged.length ? "Suggestions ready" : "No suggestions");
-    } catch (e) {
-      if (token !== lastSuggestToken) return;
-      setStatus("Suggest error");
+      setStatus(merged.length ? "Suggestions" : "No matches");
+    } catch(e) {
+      if (token !== lastToken) return;
+      setStatus("API error");
       showError(String(e.message || e));
       hideSuggestions();
     }
@@ -492,20 +471,13 @@
     debounceTimer = setTimeout(runSuggest, 250);
   });
 
-  // Hide suggestions when tapping elsewhere
-  document.addEventListener("click", (e)=>{
-    if (!e.target.closest(".suggestBox")) hideSuggestions();
-  });
-
-  // If Exact toggle changes, re-suggest quickly
   exactToggleEl.addEventListener("change", ()=>{
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runSuggest, 150);
   });
-  suggestToggleEl.addEventListener("change", ()=>{
-    hideSuggestions();
-    if (suggestToggleEl.checked) runSuggest();
-    else setStatus("Offline only");
+
+  document.addEventListener("click", (e)=>{
+    if (!e.target.closest(".suggestBox")) hideSuggestions();
   });
 
   // --------------------------
@@ -527,29 +499,25 @@
   }
 
   saveBtn.addEventListener("click", saveName);
-
   nameEl.addEventListener("keydown", async (e)=>{
-    if (e.key === "Enter") {
-      e.preventDefault();
-      await saveName();
-    }
+    if (e.key === "Enter") { e.preventDefault(); await saveName(); }
   });
 
   clearBtn.addEventListener("click", ()=>{
-    nameEl.value = "";
+    nameEl.value="";
     hideSuggestions();
     setStatus("Cleared");
     nameEl.focus();
   });
 
   // --------------------------
-  // Custom name add
+  // Custom add
   // --------------------------
   addCustomBtn.addEventListener("click", async ()=>{
     const n = customNameEl.value.trim();
     if (!n) return alert("Enter a custom name.");
     await addToStore(STORE_CUSTOM, { name: n, created: new Date().toISOString() });
-    customNameEl.value = "";
+    customNameEl.value="";
     setStatus("Custom added");
   });
 
@@ -557,13 +525,12 @@
   // Find logged entries
   // --------------------------
   function renderResults(rows){
-    resultsEl.innerHTML = "";
+    resultsEl.innerHTML="";
     if (!rows.length) {
       resultsEl.innerHTML = `<div class="resultItem">No matches.</div>`;
       return;
     }
 
-    // aggregate by name + loc
     const agg = new Map();
     for (const r of rows){
       const key = normalize(r.name) + "||" + r.loc;
@@ -609,16 +576,16 @@
     const entries = await getAll(STORE_ENTRIES);
     const customs = await getAll(STORE_CUSTOM);
 
-    const header = ["type","name","loc","timestamp","notes"];
+    const header = ["type","name","loc","timestamp"];
     const lines = [header.join(",")];
 
     for (const e of entries){
-      const row = ["entry", e.name||"", e.loc||"", e.ts||"", ""]
+      const row = ["entry", e.name||"", e.loc||"", e.ts||""]
         .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
     for (const c of customs){
-      const row = ["custom", c.name||"", "", c.created||"", ""]
+      const row = ["custom", c.name||"", "", c.created||""]
         .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
@@ -636,7 +603,7 @@
     if (confirm("This deletes ALL saved logs + custom names on this iPhone. Continue?")){
       await wipeAll();
       setStatus("Wiped");
-      resultsEl.innerHTML = "";
+      resultsEl.innerHTML="";
       hideSuggestions();
     }
   });
@@ -647,7 +614,6 @@
   (async ()=>{
     await openDB();
     setStatus("Ready");
-    // Optional service worker registration
     if ("serviceWorker" in navigator){
       try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
     }
