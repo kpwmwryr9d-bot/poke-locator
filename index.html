@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Poké Locator — Search</title>
+  <title>Poké Locator — Fast Log</title>
 
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#111111">
@@ -16,7 +16,7 @@
   <style>
     :root { --pad: 12px; --radius: 12px; }
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background:#0b0b0b; color:#fff; }
-    header { padding: var(--pad); position: sticky; top:0; background: rgba(0,0,0,.88); backdrop-filter: blur(10px); border-bottom: 1px solid #222; z-index: 2; }
+    header { padding: var(--pad); position: sticky; top:0; background: rgba(0,0,0,.88); backdrop-filter: blur(10px); border-bottom: 1px solid #222; z-index: 3; }
     h1 { font-size: 18px; margin:0; }
     main { padding: var(--pad); display:grid; gap:12px; }
     .card { background:#131313; border:1px solid #232323; border-radius: var(--radius); padding: var(--pad); }
@@ -25,7 +25,7 @@
       font-size: 16px; border-radius: 10px; border:1px solid #2a2a2a; background:#1c1c1c; color:#fff;
       padding: 10px 12px;
     }
-    textarea { width:100%; min-height: 70px; }
+    textarea { width:100%; min-height: 60px; }
     button { cursor:pointer; }
     button.primary { background:#2a5bd7; border-color:#2a5bd7; }
     button.good { background:#1d7f43; border-color:#1d7f43; }
@@ -35,18 +35,37 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .small { font-size: 13px; opacity:.85; }
     .hint { font-size:12px; opacity:.8; line-height:1.35; }
+
     .grid { display:grid; grid-template-columns: 1fr; gap:10px; }
     @media (min-width: 860px){ .grid { grid-template-columns: 1fr 1fr; } }
 
-    .results { display:grid; gap:10px; }
-    .resultItem {
-      border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111;
-      display:grid; grid-template-columns: 86px 1fr; gap:10px; align-items:start;
+    /* Suggestions dropdown */
+    .suggestBox { position: relative; }
+    .suggestList {
+      position:absolute;
+      top: calc(100% + 6px);
+      left:0; right:0;
+      background:#101010;
+      border:1px solid #2a2a2a;
+      border-radius: 12px;
+      overflow:hidden;
+      z-index: 10;
+      display:none;
     }
-    .thumb { width:86px; height:auto; border-radius:10px; border:1px solid #2a2a2a; background:#0a0a0a; }
-    .title { font-weight:700; }
-    .meta { font-size:13px; opacity:.85; margin-top:2px; }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .suggestItem {
+      padding: 10px 12px;
+      border-top:1px solid #1f1f1f;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      font-size: 15px;
+    }
+    .suggestItem:first-child { border-top:0; }
+    .suggestItem:hover { background:#171717; }
+    .suggestRight { font-size:12px; opacity:.8; }
+    .results { display:grid; gap:10px; }
+    .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; }
     .divider { border:0; border-top:1px solid #262626; margin:12px 0; }
 
     .toggle {
@@ -74,44 +93,32 @@
 <header>
   <div class="row" style="justify-content:space-between;">
     <h1>Poké Locator</h1>
-    <span class="pill">Search on demand • Add custom • Save locations</span>
+    <span class="pill">Fast Log • Suggestions optional</span>
   </div>
 </header>
 
 <main class="grid">
 
   <section class="card">
-    <h2 style="margin:0 0 10px 0; font-size:16px;">Search the card database</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Log a card name (fast)</h2>
 
-    <div class="row">
-      <input id="q" placeholder="Search (e.g., Iono, Rare Candy, Boss's Orders)" style="flex:1;">
-      <button id="searchBtn" class="primary">Search</button>
+    <div class="suggestBox">
+      <input id="name" autocomplete="off" placeholder="Type card name (e.g., Iono, Rare Candy)" style="width:100%;">
+      <div id="suggestList" class="suggestList"></div>
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="set" placeholder="Set id (optional, e.g., sv3)" class="mono" style="width:170px;">
-      <input id="number" placeholder="# (optional)" class="mono" style="width:130px;">
+      <label class="toggle" title="Suggestions call the API (text-only). Turn off for offline-only.">
+        <input type="checkbox" id="suggestToggle" checked>
+        Suggestions
+      </label>
 
-      <label class="toggle" title="Exact uses name:&quot;Iono&quot; ; otherwise contains search (name:*iono*)">
+      <label class="toggle" title="Exact uses name:&quot;Iono&quot; ; otherwise contains (name:*iono*)">
         <input type="checkbox" id="exactToggle">
         Exact
       </label>
 
-      <select id="pageSize" style="width:150px;">
-        <option value="24">24</option>
-        <option value="48" selected>48</option>
-        <option value="96">96</option>
-        <option value="250">250 (max)</option>
-      </select>
-
       <span id="status" class="pill">Idle</span>
-    </div>
-
-    <div class="row" style="margin-top:10px;">
-      <button id="prevBtn" disabled>Prev</button>
-      <button id="nextBtn" disabled>Next</button>
-      <span class="pill mono" id="pagePill">Page 1</span>
-      <span class="pill mono" id="totalPill">Total: —</span>
     </div>
 
     <div class="row" style="margin-top:10px;">
@@ -121,7 +128,7 @@
     </div>
 
     <div class="hint" style="margin-top:8px;">
-      Tip: Use <b>3+ letters</b> (or set/number). Exact is best when you know the name.
+      This app logs names instantly. Suggestions are text-only and limited to 12 results for speed.
     </div>
 
     <div id="errBox" class="errBox"></div>
@@ -144,22 +151,27 @@
       <select id="bulkChunk"></select>
       <span class="pill mono" id="selectedLoc"></span>
     </div>
+
+    <div class="row" style="margin-top:12px;">
+      <button id="saveBtn" class="good">Save Name → Location</button>
+      <button id="clearBtn">Clear</button>
+    </div>
   </section>
 
   <section class="card">
-    <h2 style="margin:0 0 10px 0; font-size:16px;">Your custom cards</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Custom names + Find</h2>
 
     <div class="row">
-      <input id="customName" placeholder="Custom card name" style="flex:1;">
-      <input id="customSet" placeholder="Set (optional)" class="mono" style="width:150px;">
-      <input id="customNum" placeholder="# (optional)" class="mono" style="width:130px;">
-    </div>
-    <div style="margin-top:8px;">
-      <textarea id="customNotes" placeholder="Notes (optional): proxy, misprint, etc…"></textarea>
+      <input id="customName" placeholder="Add a custom name (optional)" style="flex:1;">
+      <button id="addCustom" class="primary">Add Custom</button>
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <button id="addCustom" class="good">Add Custom Card</button>
+      <input id="search" placeholder="Search logged names" style="flex:1;">
+      <button id="runSearch" class="primary">Search</button>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
       <button id="exportCsv">Export CSV</button>
       <button id="wipe" class="warn">Wipe Local Data</button>
       <span class="pill">Stored on this iPhone</span>
@@ -167,9 +179,9 @@
 
     <hr class="divider">
 
-    <h2 style="margin:0 0 10px 0; font-size:16px;">Results</h2>
     <div id="results" class="results"></div>
   </section>
+
 </main>
 
 <script>
@@ -179,29 +191,36 @@
   const API_BASE = "https://api.pokemontcg.io/v2/cards";
   const DB_NAME = "poke_locator_db";
   const STORE_ENTRIES = "entries";
-  const STORE_CUSTOM = "custom_cards";
+  const STORE_CUSTOM = "custom_names";
 
   // --------------------------
   // DOM
   // --------------------------
-  const qEl = document.getElementById("q");
-  const setEl = document.getElementById("set");
-  const numEl = document.getElementById("number");
-  const exactEl = document.getElementById("exactToggle");
-  const pageSizeEl = document.getElementById("pageSize");
-
+  const nameEl = document.getElementById("name");
+  const suggestListEl = document.getElementById("suggestList");
   const statusEl = document.getElementById("status");
-  const resultsEl = document.getElementById("results");
   const errBox = document.getElementById("errBox");
 
-  const prevBtn = document.getElementById("prevBtn");
-  const nextBtn = document.getElementById("nextBtn");
-  const pagePill = document.getElementById("pagePill");
-  const totalPill = document.getElementById("totalPill");
+  const suggestToggleEl = document.getElementById("suggestToggle");
+  const exactToggleEl = document.getElementById("exactToggle");
 
-  const selectedLocSpan = document.getElementById("selectedLoc");
+  const apiKeyInput = document.getElementById("apiKey");
+  const saveKeyBtn = document.getElementById("saveKey");
+  const clearKeyBtn = document.getElementById("clearKey");
+
   const bulkRowEl = document.getElementById("bulkRow");
   const bulkChunkEl = document.getElementById("bulkChunk");
+  const selectedLocSpan = document.getElementById("selectedLoc");
+
+  const saveBtn = document.getElementById("saveBtn");
+  const clearBtn = document.getElementById("clearBtn");
+
+  const customNameEl = document.getElementById("customName");
+  const addCustomBtn = document.getElementById("addCustom");
+
+  const searchEl = document.getElementById("search");
+  const runSearchBtn = document.getElementById("runSearch");
+  const resultsEl = document.getElementById("results");
 
   // --------------------------
   // Bulk chunks 01..14
@@ -218,9 +237,7 @@
   // --------------------------
   let selectedLoc = "";
 
-  function bulkLoc(){
-    return bulkRowEl.value + bulkChunkEl.value;
-  }
+  function bulkLoc(){ return bulkRowEl.value + bulkChunkEl.value; }
   function setSelectedLoc(v){
     selectedLoc = v;
     selectedLocSpan.textContent = selectedLoc || "No location";
@@ -228,51 +245,10 @@
 
   bulkRowEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
   bulkChunkEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
-
   document.querySelectorAll(".pillBtn").forEach(btn=>{
     btn.addEventListener("click", ()=> setSelectedLoc(btn.dataset.loc));
   });
-
-  // default location
   setSelectedLoc(bulkLoc());
-
-  // --------------------------
-  // Pagination state
-  // --------------------------
-  let currentPage = 1;
-  let lastQueryKey = "";
-  let lastTotalCount = 0;
-
-  function updatePager(){
-    pagePill.textContent = `Page ${currentPage}`;
-    totalPill.textContent = `Total: ${lastTotalCount ? lastTotalCount : "—"}`;
-    prevBtn.disabled = (currentPage <= 1);
-
-    const pageSize = Number(pageSizeEl.value || "48");
-    const shownSoFar = currentPage * pageSize;
-
-    // if totalCount missing, disable Next to avoid weird loops
-    nextBtn.disabled = !(lastTotalCount && lastTotalCount > shownSoFar);
-  }
-
-  prevBtn.addEventListener("click", async ()=>{
-    if (currentPage > 1) {
-      currentPage--;
-      await runSearch(true);
-    }
-  });
-  nextBtn.addEventListener("click", async ()=>{
-    const pageSize = Number(pageSizeEl.value || "48");
-    if (lastTotalCount && lastTotalCount > currentPage * pageSize) {
-      currentPage++;
-      await runSearch(true);
-    }
-  });
-
-  // reset page when filters change
-  [setEl, numEl, exactEl, pageSizeEl].forEach(el=>{
-    el.addEventListener("change", ()=> { currentPage = 1; });
-  });
 
   // --------------------------
   // IndexedDB
@@ -281,30 +257,20 @@
 
   function openDB(){
     return new Promise((resolve,reject)=>{
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = ()=>{
         const d = req.result;
-
         if (!d.objectStoreNames.contains(STORE_ENTRIES)) {
-          const s = d.createObjectStore(STORE_ENTRIES, { keyPath: "id", autoIncrement: true });
-          s.createIndex("name", "name", { unique:false });
-          s.createIndex("loc", "loc", { unique:false });
+          const s = d.createObjectStore(STORE_ENTRIES, { keyPath:"id", autoIncrement:true });
+          s.createIndex("name","name",{unique:false});
+          s.createIndex("loc","loc",{unique:false});
         }
         if (!d.objectStoreNames.contains(STORE_CUSTOM)) {
-          const c = d.createObjectStore(STORE_CUSTOM, { keyPath: "id", autoIncrement: true });
-          c.createIndex("name", "name", { unique:false });
+          const c = d.createObjectStore(STORE_CUSTOM, { keyPath:"id", autoIncrement:true });
+          c.createIndex("name","name",{unique:false});
         }
       };
       req.onsuccess = ()=>{ db = req.result; resolve(db); };
-      req.onerror = ()=>reject(req.error);
-    });
-  }
-
-  function getAll(storeName){
-    return new Promise((resolve,reject)=>{
-      const tx = db.transaction(storeName,"readonly");
-      const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = ()=>resolve(req.result);
       req.onerror = ()=>reject(req.error);
     });
   }
@@ -318,12 +284,12 @@
     });
   }
 
-  function deleteFromStore(storeName, id){
+  function getAll(storeName){
     return new Promise((resolve,reject)=>{
-      const tx = db.transaction(storeName,"readwrite");
-      tx.objectStore(storeName).delete(id);
-      tx.oncomplete = ()=>resolve();
-      tx.onerror = ()=>reject(tx.error);
+      const tx = db.transaction(storeName,"readonly");
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
     });
   }
 
@@ -345,14 +311,12 @@
   // --------------------------
   // API key
   // --------------------------
-  const apiKeyInput = document.getElementById("apiKey");
   apiKeyInput.value = localStorage.getItem("poke_api_key") || "";
-
-  document.getElementById("saveKey").addEventListener("click", ()=>{
+  saveKeyBtn.addEventListener("click", ()=>{
     localStorage.setItem("poke_api_key", apiKeyInput.value.trim());
     setStatus("Key saved");
   });
-  document.getElementById("clearKey").addEventListener("click", ()=>{
+  clearKeyBtn.addEventListener("click", ()=>{
     localStorage.removeItem("poke_api_key");
     apiKeyInput.value = "";
     setStatus("Key cleared");
@@ -370,322 +334,291 @@
     errBox.style.display = "none";
     errBox.textContent = "";
   }
-  function escapeHtml(s){
-    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-  }
+  function normalize(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 
-  function normalizeName(s){
-    return (s||"").toLowerCase().replace(/\s+/g," ").trim();
-  }
-
-  function subtitleFromApi(c){
-    const setName = c.set?.name || "";
-    const setId = c.set?.id || "";
-    const num = c.number || "";
-    const rarity = c.rarity || "";
-    return [setName, setId ? `(${setId})` : "", num ? `#${num}` : "", rarity].filter(Boolean).join(" • ");
-  }
-
-  // Escape Lucene special chars for safety in name queries
-  // (keep it simple: strip quotes, escape colon/backslash)
+  // Safe query sanitizer for lucene-ish syntax
   function sanitizeForQuery(s){
     return (s||"")
-      .replace(/"/g, "")       // remove quotes
-      .replace(/\\/g, "\\\\")  // escape backslash
-      .replace(/:/g, "\\:")    // escape colon
+      .replace(/"/g,"")
+      .replace(/\\/g,"\\\\")
+      .replace(/:/g,"\\:")
       .trim();
   }
 
-  function buildApiQuery(){
-    const nameRaw = qEl.value.trim();
-    const setId = setEl.value.trim();
-    const num = numEl.value.trim();
-    const exact = exactEl.checked;
+  // Build a fast query for suggestions (TEXT ONLY)
+  function buildSuggestQuery(text){
+    const exact = exactToggleEl.checked;
+    const t = sanitizeForQuery(text);
+    const words = t.split(/\s+/).filter(Boolean);
 
-    const clauses = [];
-
-    if (nameRaw) {
-      const n = sanitizeForQuery(nameRaw);
-      if (exact) {
-        // exact phrase match
-        clauses.push(`name:"${n}"`);
-      } else {
-        // contains style:
-        // - one word => name:*word*
-        // - multiple words => require each word
-        const words = n.split(/\s+/).filter(Boolean);
-        if (words.length === 1) {
-          clauses.push(`name:*${words[0]}*`);
-        } else {
-          clauses.push(words.map(w => `name:*${w}*`).join(" AND "));
-        }
-      }
-    }
-
-    if (setId) clauses.push(`set.id:${sanitizeForQuery(setId)}`);
-    if (num) clauses.push(`number:${sanitizeForQuery(num)}`);
-
-    return clauses.join(" AND ");
+    if (!words.length) return "";
+    if (exact) return `name:"${t}"`;
+    if (words.length === 1) return `name:*${words[0]}*`;
+    return words.map(w => `name:*${w}*`).join(" AND ");
   }
 
-  async function fetchCards(query, pageSize, page){
+  async function fetchSuggestions(text){
+    const q = buildSuggestQuery(text);
+    if (!q) return [];
+
     const url = new URL(API_BASE);
-    url.searchParams.set("q", query);
-    url.searchParams.set("pageSize", String(pageSize));
-    url.searchParams.set("page", String(page));
+    url.searchParams.set("q", q);
+    url.searchParams.set("pageSize", "12");
+    url.searchParams.set("page", "1");
     url.searchParams.set("orderBy", "name");
-    url.searchParams.set("select", "id,name,set,number,images,rarity");
+
+    // IMPORTANT for speed: no images, no big payload
+    url.searchParams.set("select", "id,name,set,number");
 
     const headers = {};
     const key = (localStorage.getItem("poke_api_key") || "").trim();
     if (key) headers["X-Api-Key"] = key;
 
     const res = await fetch(url.toString(), { headers });
-    const text = await res.text();
-
+    const textBody = await res.text();
     let json = null;
-    try { json = JSON.parse(text); } catch(e) {}
+    try { json = JSON.parse(textBody); } catch(e) {}
 
     if (!res.ok) {
-      const detail = json?.message || json?.error || text || `HTTP ${res.status}`;
+      const detail = json?.message || json?.error || textBody || `HTTP ${res.status}`;
       throw new Error(`API ${res.status}: ${detail}`);
     }
 
-    return {
-      data: json?.data || [],
-      totalCount: typeof json?.totalCount === "number" ? json.totalCount : 0
-    };
+    return json?.data || [];
   }
 
-  function renderEmpty(msg){
-    resultsEl.innerHTML = `<div class="card">${escapeHtml(msg)}</div>`;
+  // --------------------------
+  // Suggestions rendering
+  // --------------------------
+  function hideSuggestions(){
+    suggestListEl.style.display = "none";
+    suggestListEl.innerHTML = "";
   }
 
-  function renderCard(item){
-    const img = item.image || "";
-    const title = item.name || "(no name)";
-    const subtitle = item.subtitle || "";
-    const kindPill = item.kind === "api"
-      ? `<span class="pill mono">API</span>`
-      : `<span class="pill mono">CUSTOM</span>`;
-    const lastPill = item.lastLoc ? `<span class="pill mono">Last: ${escapeHtml(item.lastLoc)}</span>` : "";
-
-    const div = document.createElement("div");
-    div.className = "resultItem";
-    div.innerHTML = `
-      <div>${img ? `<img class="thumb" src="${escapeHtml(img)}" alt="">` : `<div class="thumb"></div>`}</div>
-      <div>
-        <div class="title">${escapeHtml(title)} ${kindPill}</div>
-        <div class="meta">${escapeHtml(subtitle)}</div>
-        <div class="actions">
-          <button class="good" data-action="save">Save → ${escapeHtml(selectedLoc)}</button>
-          <button data-action="copy">Copy name</button>
-          ${lastPill}
-          ${item.kind === "custom" ? `<button class="warn" data-action="del">Delete custom</button>` : ""}
-        </div>
-        ${item.notes ? `<div class="meta" style="margin-top:6px;">${escapeHtml(item.notes)}</div>` : ""}
-      </div>
-    `;
-
-    div.querySelector('[data-action="copy"]').addEventListener("click", async ()=>{
-      await navigator.clipboard.writeText(title);
-      setStatus("Copied");
-    });
-
-    div.querySelector('[data-action="save"]').addEventListener("click", async ()=>{
-      if (!selectedLoc) { alert("Select a location first."); return; }
-      await addToStore(STORE_ENTRIES, {
-        name: title,
-        loc: selectedLoc,
-        ts: new Date().toISOString(),
-        source: item.kind,
-        cardId: item.kind === "api" ? item.id : null,
-        setId: item.setId || "",
-        number: item.number || ""
+  function showSuggestions(items){
+    if (!items.length) { hideSuggestions(); return; }
+    suggestListEl.innerHTML = "";
+    for (const c of items) {
+      const div = document.createElement("div");
+      div.className = "suggestItem";
+      const setId = c.set?.id ? c.set.id : "";
+      const num = c.number ? c.number : "";
+      div.innerHTML = `
+        <div>${c.name}</div>
+        <div class="suggestRight mono">${setId}${num ? " • #" + num : ""}</div>
+      `;
+      div.addEventListener("click", ()=>{
+        nameEl.value = c.name;
+        hideSuggestions();
+        setStatus("Picked ✓");
       });
-      setStatus(`Saved to ${selectedLoc}`);
-      await runSearch(true);
-    });
-
-    const delBtn = div.querySelector('[data-action="del"]');
-    if (delBtn) {
-      delBtn.addEventListener("click", async ()=>{
-        if (confirm("Delete this custom card?")) {
-          await deleteFromStore(STORE_CUSTOM, item.id);
-          setStatus("Custom deleted");
-          await runSearch(true);
-        }
-      });
+      suggestListEl.appendChild(div);
     }
-
-    resultsEl.appendChild(div);
+    suggestListEl.style.display = "block";
   }
 
   // --------------------------
-  // Search flow
+  // Local custom names (shown first in suggestions)
   // --------------------------
-  async function renderCustomOnly(){
+  async function getCustomMatches(prefix){
+    const p = normalize(prefix);
+    if (!p) return [];
     const customs = await getAll(STORE_CUSTOM);
-    if (!customs.length) {
-      renderEmpty("No results yet. Add a custom card or search by name.");
-      return;
-    }
-    resultsEl.innerHTML = "";
-    for (const c of customs) {
-      renderCard({
-        kind: "custom",
-        id: c.id,
-        name: c.name,
-        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
-        notes: c.notes || "",
-        image: "",
-        setId: c.setId || "",
-        number: c.number || ""
-      });
-    }
+    const matches = customs
+      .map(c => c.name)
+      .filter(n => normalize(n).includes(p))
+      .slice(0, 6);
+    return matches;
   }
 
-  async function runSearch(isPaging){
+  // --------------------------
+  // Debounced suggestion engine
+  // --------------------------
+  let debounceTimer = null;
+  let lastSuggestToken = 0;
+
+  async function runSuggest(){
     clearError();
-    resultsEl.innerHTML = "";
 
-    const nameRaw = qEl.value.trim();
-    const setId = setEl.value.trim();
-    const num = numEl.value.trim();
+    const text = nameEl.value.trim();
+    if (!suggestToggleEl.checked) { hideSuggestions(); return; }
 
-    // Guards
-    if (!nameRaw && !setId && !num) {
-      setStatus("Type a name (or set/number)");
-      lastTotalCount = 0;
-      updatePager();
-      await renderCustomOnly();
+    // guard: avoid spam + huge queries
+    if (text.length < 2) { hideSuggestions(); setStatus("Idle"); return; }
+
+    const token = ++lastSuggestToken;
+    setStatus("Suggesting…");
+
+    // Custom matches first (offline)
+    const custom = await getCustomMatches(text);
+
+    // If still short, don’t call API (keeps it snappy)
+    if (text.length < 3) {
+      const items = custom.map(n => ({ name: n, set:{id:"custom"}, number:"" }));
+      showSuggestions(items);
+      setStatus(custom.length ? "Custom suggestions" : "Type 3+ for API");
       return;
     }
-    if (nameRaw && nameRaw.length < 3 && !setId && !num) {
-      setStatus("Type at least 3 letters (or use set/number)");
-      lastTotalCount = 0;
-      updatePager();
-      await renderCustomOnly();
-      return;
-    }
 
-    const pageSize = Number(pageSizeEl.value || "48");
-    const query = buildApiQuery();
-
-    // If query changed and not paging, reset page
-    const queryKey = `${query}::${pageSize}`;
-    if (!isPaging && queryKey !== lastQueryKey) currentPage = 1;
-    lastQueryKey = queryKey;
-
-    setStatus("Searching…");
-    updatePager();
-
-    // Fetch API results
-    let api = { data: [], totalCount: 0 };
     try {
-      api = await fetchCards(query, pageSize, currentPage);
+      const apiItems = await fetchSuggestions(text);
+      if (token !== lastSuggestToken) return; // ignore stale
+
+      // Merge: customs first, then API de-duped by name
+      const seen = new Set(custom.map(n => normalize(n)));
+      const merged = [];
+
+      for (const n of custom) merged.push({ name:n, set:{id:"custom"}, number:"" });
+      for (const c of apiItems) {
+        const key = normalize(c.name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(c);
+        if (merged.length >= 12) break;
+      }
+
+      showSuggestions(merged);
+      setStatus(merged.length ? "Suggestions ready" : "No suggestions");
     } catch (e) {
-      setStatus("API error");
+      if (token !== lastSuggestToken) return;
+      setStatus("Suggest error");
       showError(String(e.message || e));
-      lastTotalCount = 0;
-      updatePager();
-      // still show customs so app isn't "blank"
-      await renderCustomOnly();
-      return;
+      hideSuggestions();
     }
-
-    lastTotalCount = api.totalCount || 0;
-    updatePager();
-
-    // Last locations map (by name)
-    const entries = await getAll(STORE_ENTRIES);
-    const lastLocByName = new Map();
-    for (const e of entries) {
-      const key = normalizeName(e.name);
-      if (!key) continue;
-      const prev = lastLocByName.get(key);
-      if (!prev || e.ts > prev.ts) lastLocByName.set(key, { loc: e.loc, ts: e.ts });
-    }
-
-    // Custom matches (only filter by name text)
-    const customs = await getAll(STORE_CUSTOM);
-    const nameLower = nameRaw.toLowerCase();
-    const customMatches = customs.filter(c => {
-      if (!nameRaw) return true;
-      return normalizeName(c.name).includes(normalizeName(nameLower));
-    });
-
-    // Render
-    resultsEl.innerHTML = "";
-    for (const c of customMatches) {
-      const last = lastLocByName.get(normalizeName(c.name));
-      renderCard({
-        kind: "custom",
-        id: c.id,
-        name: c.name,
-        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
-        notes: c.notes || "",
-        image: "",
-        setId: c.setId || "",
-        number: c.number || "",
-        lastLoc: last ? last.loc : ""
-      });
-    }
-
-    for (const c of api.data) {
-      const last = lastLocByName.get(normalizeName(c.name));
-      renderCard({
-        kind: "api",
-        id: c.id,
-        name: c.name,
-        subtitle: subtitleFromApi(c),
-        image: c.images?.small || c.images?.large || "",
-        setId: c.set?.id || "",
-        number: c.number || "",
-        lastLoc: last ? last.loc : ""
-      });
-    }
-
-    const shown = customMatches.length + api.data.length;
-    setStatus(shown ? `Showing ${shown} results` : "No results");
-    if (!shown) renderEmpty("No results. Try a different search or add as custom.");
   }
 
-  // --------------------------
-  // Custom add / export / wipe
-  // --------------------------
-  document.getElementById("addCustom").addEventListener("click", async ()=>{
-    const name = document.getElementById("customName").value.trim();
-    if (!name) return alert("Enter a custom card name.");
-    const setId = document.getElementById("customSet").value.trim();
-    const number = document.getElementById("customNum").value.trim();
-    const notes = document.getElementById("customNotes").value.trim();
-
-    await addToStore(STORE_CUSTOM, { name, setId, number, notes, created: new Date().toISOString() });
-
-    document.getElementById("customName").value = "";
-    document.getElementById("customSet").value = "";
-    document.getElementById("customNum").value = "";
-    document.getElementById("customNotes").value = "";
-
-    setStatus("Custom added");
-    await runSearch(false);
+  nameEl.addEventListener("input", ()=>{
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runSuggest, 250);
   });
 
+  // Hide suggestions when tapping elsewhere
+  document.addEventListener("click", (e)=>{
+    if (!e.target.closest(".suggestBox")) hideSuggestions();
+  });
+
+  // If Exact toggle changes, re-suggest quickly
+  exactToggleEl.addEventListener("change", ()=>{
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runSuggest, 150);
+  });
+  suggestToggleEl.addEventListener("change", ()=>{
+    hideSuggestions();
+    if (suggestToggleEl.checked) runSuggest();
+    else setStatus("Offline only");
+  });
+
+  // --------------------------
+  // Save name (instant)
+  // --------------------------
+  async function saveName(){
+    const name = nameEl.value.trim();
+    if (!name) return alert("Type a name first.");
+    if (!selectedLoc) return alert("Select a location first.");
+
+    await addToStore(STORE_ENTRIES, {
+      name,
+      loc: selectedLoc,
+      ts: new Date().toISOString()
+    });
+
+    setStatus(`Saved → ${selectedLoc}`);
+    hideSuggestions();
+  }
+
+  saveBtn.addEventListener("click", saveName);
+
+  nameEl.addEventListener("keydown", async (e)=>{
+    if (e.key === "Enter") {
+      e.preventDefault();
+      await saveName();
+    }
+  });
+
+  clearBtn.addEventListener("click", ()=>{
+    nameEl.value = "";
+    hideSuggestions();
+    setStatus("Cleared");
+    nameEl.focus();
+  });
+
+  // --------------------------
+  // Custom name add
+  // --------------------------
+  addCustomBtn.addEventListener("click", async ()=>{
+    const n = customNameEl.value.trim();
+    if (!n) return alert("Enter a custom name.");
+    await addToStore(STORE_CUSTOM, { name: n, created: new Date().toISOString() });
+    customNameEl.value = "";
+    setStatus("Custom added");
+  });
+
+  // --------------------------
+  // Find logged entries
+  // --------------------------
+  function renderResults(rows){
+    resultsEl.innerHTML = "";
+    if (!rows.length) {
+      resultsEl.innerHTML = `<div class="resultItem">No matches.</div>`;
+      return;
+    }
+
+    // aggregate by name + loc
+    const agg = new Map();
+    for (const r of rows){
+      const key = normalize(r.name) + "||" + r.loc;
+      const prev = agg.get(key) || { name:r.name, loc:r.loc, qty:0, lastTs:r.ts };
+      prev.qty += 1;
+      if (r.ts > prev.lastTs) prev.lastTs = r.ts;
+      agg.set(key, prev);
+    }
+
+    const list = Array.from(agg.values())
+      .sort((a,b)=> a.name.localeCompare(b.name) || a.loc.localeCompare(b.loc));
+
+    for (const it of list){
+      const div = document.createElement("div");
+      div.className = "resultItem";
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div>
+            <div style="font-weight:700;">${it.name}</div>
+            <div class="small mono">Location: ${it.loc}</div>
+          </div>
+          <div class="pill mono">x${it.qty}</div>
+        </div>
+      `;
+      resultsEl.appendChild(div);
+    }
+  }
+
+  async function runFind(){
+    const q = normalize(searchEl.value);
+    const all = await getAll(STORE_ENTRIES);
+    const hits = q ? all.filter(e => normalize(e.name).includes(q)) : all;
+    renderResults(hits);
+    setStatus(`Showing ${hits.length} logs`);
+  }
+
+  runSearchBtn.addEventListener("click", runFind);
+
+  // --------------------------
+  // Export / wipe
+  // --------------------------
   document.getElementById("exportCsv").addEventListener("click", async ()=>{
     const entries = await getAll(STORE_ENTRIES);
     const customs = await getAll(STORE_CUSTOM);
 
-    const header = ["type","name","setId","number","loc","timestamp","notes","cardId"];
+    const header = ["type","name","loc","timestamp","notes"];
     const lines = [header.join(",")];
 
     for (const e of entries){
-      const row = ["entry", e.name||"", e.setId||"", e.number||"", e.loc||"", e.ts||"", "", e.cardId||""]
+      const row = ["entry", e.name||"", e.loc||"", e.ts||"", ""]
         .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
     for (const c of customs){
-      const row = ["custom", c.name||"", c.setId||"", c.number||"", "", c.created||"", c.notes||"", ""]
+      const row = ["custom", c.name||"", "", c.created||"", ""]
         .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
@@ -700,28 +633,11 @@
   });
 
   document.getElementById("wipe").addEventListener("click", async ()=>{
-    if (confirm("This deletes ALL saved entries + custom cards on this iPhone. Continue?")){
+    if (confirm("This deletes ALL saved logs + custom names on this iPhone. Continue?")){
       await wipeAll();
       setStatus("Wiped");
-      currentPage = 1;
-      lastTotalCount = 0;
-      updatePager();
-      await renderCustomOnly();
-    }
-  });
-
-  // --------------------------
-  // Search events
-  // --------------------------
-  document.getElementById("searchBtn").addEventListener("click", async ()=>{
-    currentPage = 1;
-    await runSearch(false);
-  });
-
-  qEl.addEventListener("keydown", async (e)=>{
-    if (e.key === "Enter") {
-      currentPage = 1;
-      await runSearch(false);
+      resultsEl.innerHTML = "";
+      hideSuggestions();
     }
   });
 
@@ -730,9 +646,8 @@
   // --------------------------
   (async ()=>{
     await openDB();
-    updatePager();
-    await renderCustomOnly();
-
+    setStatus("Ready");
+    // Optional service worker registration
     if ("serviceWorker" in navigator){
       try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
     }
