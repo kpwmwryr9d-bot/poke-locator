@@ -3,189 +3,163 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Poké Locator</title>
+  <title>Poké Locator — Search</title>
 
-  <!-- UPDATED: manifest.webmanifest -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#111111">
+
+  <!-- iPhone Home Screen icon support -->
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <style>
     :root { --pad: 12px; --radius: 12px; }
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background:#0b0b0b; color:#fff; }
-    header { padding: var(--pad); position: sticky; top:0; background: rgba(0,0,0,.85); backdrop-filter: blur(10px); border-bottom: 1px solid #222; z-index: 2; }
+    header { padding: var(--pad); position: sticky; top:0; background: rgba(0,0,0,.88); backdrop-filter: blur(10px); border-bottom: 1px solid #222; z-index: 2; }
     h1 { font-size: 18px; margin:0; }
-    main { padding: var(--pad); display: grid; gap: 12px; }
+    main { padding: var(--pad); display:grid; gap:12px; }
     .card { background:#131313; border:1px solid #232323; border-radius: var(--radius); padding: var(--pad); }
     .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    button, input, select {
+    input, select, button, textarea {
       font-size: 16px; border-radius: 10px; border:1px solid #2a2a2a; background:#1c1c1c; color:#fff;
       padding: 10px 12px;
     }
+    textarea { width:100%; min-height: 70px; }
     button { cursor:pointer; }
     button.primary { background:#2a5bd7; border-color:#2a5bd7; }
     button.good { background:#1d7f43; border-color:#1d7f43; }
     button.warn { background:#a23a3a; border-color:#a23a3a; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
     .pill { padding: 6px 10px; border-radius: 999px; background:#1a1a1a; border:1px solid #2a2a2a; font-size: 13px; }
-    #videoWrap { position: relative; overflow:hidden; border-radius: var(--radius); border:1px solid #2a2a2a; background:#000; }
-    video { width:100%; height:auto; display:block; }
-
-    /* Big framing guide */
-    .overlay { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; }
-    .frame {
-      width: 88%; height: 62%;
-      border:2px solid rgba(255,255,255,.65);
-      border-radius: 14px;
-      box-shadow: 0 0 0 9999px rgba(0,0,0,.25);
-    }
-
-    /* Tiny OCR region overlay box */
-    .ocrBox {
-      position:absolute;
-      border: 2px solid rgba(0, 255, 140, 0.85);
-      border-radius: 6px;
-      pointer-events:none;
-    }
-    .ocrLabel {
-      position:absolute;
-      background: rgba(0,255,140,0.85);
-      color:#000;
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      transform: translateY(-110%);
-      pointer-events:none;
-      font-weight: 700;
-      letter-spacing: .2px;
-    }
-
-    .small { font-size: 13px; opacity:.85; }
-    .results { display:grid; gap:10px; }
-    .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .split { display:grid; grid-template-columns: 1fr; gap:10px; }
-    @media (min-width: 720px) { .split { grid-template-columns: 1fr 1fr; } }
+    .small { font-size: 13px; opacity:.85; }
     .hint { font-size:12px; opacity:.8; line-height:1.35; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:10px; }
+    @media (min-width: 800px){ .grid { grid-template-columns: 1fr 1fr; } }
 
-    .suggestWrap { margin-top:10px; }
-    .suggestTitle { font-size:13px; opacity:.85; margin-bottom:8px; }
-    .suggestGrid { display:grid; grid-template-columns: 1fr; gap:8px; }
-    .suggestBtn { text-align:left; }
-    .suggestBtn .conf { float:right; opacity:.8; font-size:13px; }
-    .suggestBtn.selected { outline: 2px solid rgba(42, 91, 215, .85); }
+    .results { display:grid; gap:10px; }
+    .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; display:grid; grid-template-columns: 86px 1fr; gap:10px; align-items:start; }
+    .thumb { width:86px; height:auto; border-radius:10px; border:1px solid #2a2a2a; background:#0a0a0a; }
+    .title { font-weight:700; }
+    .meta { font-size:13px; opacity:.85; margin-top:2px; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .divider { border:0; border-top:1px solid #262626; margin:12px 0; }
+    .toggle {
+      display:flex; align-items:center; gap:8px;
+      padding: 6px 10px; border-radius: 999px;
+      background:#1a1a1a; border:1px solid #2a2a2a;
+      font-size: 13px;
+    }
+    .toggle input { transform: scale(1.15); }
   </style>
-
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 
 <body>
 <header>
   <div class="row" style="justify-content:space-between;">
     <h1>Poké Locator</h1>
-    <span class="pill">Standard • Row A playables • B–E chunks (75)</span>
+    <span class="pill">Search on demand • Add custom</span>
   </div>
 </header>
 
-<main class="split">
+<main class="grid">
+
   <section class="card">
-    <h2 style="margin:0 0 8px 0; font-size:16px;">Scan</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Search the card database</h2>
 
-    <div id="videoWrap">
-      <video id="video" playsinline autoplay></video>
-
-      <div class="overlay">
-        <div class="frame"></div>
-      </div>
-
-      <!-- Tiny OCR box overlay (positioned by JS) -->
-      <div id="ocrBox" class="ocrBox" style="display:none;">
-        <div class="ocrLabel" id="ocrLabel">NAME OCR</div>
-      </div>
+    <div class="row">
+      <input id="q" placeholder="Search (e.g., Cacnea, Rare Candy, Iono)" style="flex:1;">
+      <button id="searchBtn" class="primary">Search</button>
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <button id="startCam" class="primary">Start Camera</button>
-      <button id="snap" class="good" disabled>Capture + OCR</button>
-      <button id="burst" class="good" disabled>Burst x3</button>
-      <button id="stopCam" class="warn" disabled>Stop</button>
+      <input id="set" placeholder="Set id (optional, e.g., sv3)" class="mono" style="width:160px;">
+      <input id="number" placeholder="# (optional)" class="mono" style="width:120px;">
+
+      <label class="toggle" title="Exact match searches name:&quot;Iono&quot; instead of name:*iono*">
+        <input type="checkbox" id="exactToggle">
+        Exact
+      </label>
+
+      <select id="pageSize" style="width:140px;">
+        <option value="24">24</option>
+        <option value="48" selected>48</option>
+        <option value="96">96</option>
+        <option value="250">250 (max)</option>
+      </select>
+
+      <span id="status" class="pill">Idle</span>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <input id="apiKey" placeholder="Optional API key (X-Api-Key)" style="flex:1;">
+      <button id="saveKey">Save Key</button>
+      <button id="clearKey" class="warn">Clear</button>
     </div>
 
     <div class="hint" style="margin-top:8px;">
-      Best results: bright room light, dark matte background, keep card flat, fill the frame, avoid glare (tiny tilt helps).
-      Use <b>Burst x3</b> as your default.
+      Search-on-demand only. Tip: type <b>3+ letters</b>, or use <b>set id + number</b> for perfect precision.
     </div>
 
-    <div class="card" style="margin-top:10px;">
-      <div class="row">
-        <label class="small" for="name">Card name</label>
-        <input id="name" placeholder="(OCR fills this — you can edit)" style="flex:1;" />
-      </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="prevBtn" disabled>Prev</button>
+      <button id="nextBtn" disabled>Next</button>
+      <span class="pill mono" id="pagePill">Page 1</span>
+    </div>
 
-      <div class="row" style="margin-top:10px;">
-        <label class="small" for="variant">Variant</label>
-        <select id="variant">
-          <option value="">(optional)</option>
-          <option value="holo">holo</option>
-          <option value="reverse">reverse</option>
-          <option value="fullart">fullart</option>
-        </select>
-        <span id="ocrStatus" class="pill">Idle</span>
-      </div>
+    <hr class="divider">
 
-      <!-- Top-3 Suggestions -->
-      <div class="suggestWrap">
-        <div class="suggestTitle">Top suggestions (tap to choose)</div>
-        <div id="suggestions" class="suggestGrid">
-          <button class="suggestBtn" disabled>No suggestions yet</button>
-        </div>
-      </div>
+    <div class="small" style="margin-bottom:6px;">Assign location for selected result</div>
+    <div class="row">
+      <button class="pillBtn" data-loc="A-SUPPORTER">A • Supporter</button>
+      <button class="pillBtn" data-loc="A-ITEM">A • Item</button>
+      <button class="pillBtn" data-loc="A-TOOL_STADIUM">A • Tool/Stadium</button>
+      <button class="pillBtn" data-loc="A-ENERGY_LINES">A • Energy/Lines</button>
+    </div>
 
-      <hr style="border:0;border-top:1px solid #262626;margin:12px 0;">
-
-      <div class="small" style="margin-bottom:8px;">Choose location</div>
-      <div class="row" style="margin-bottom:10px;">
-        <button class="pillBtn" data-loc="A-SUPPORTER">A • Supporter</button>
-        <button class="pillBtn" data-loc="A-ITEM">A • Item</button>
-        <button class="pillBtn" data-loc="A-TOOL_STADIUM">A • Tool/Stadium</button>
-        <button class="pillBtn" data-loc="A-ENERGY_LINES">A • Energy/Lines</button>
-      </div>
-
-      <div class="small" style="margin:10px 0 8px;">Bulk chunks (75-card)</div>
-      <div class="row">
-        <select id="bulkRow">
-          <option>B</option><option>C</option><option>D</option><option>E</option>
-        </select>
-        <select id="bulkChunk"></select>
-        <button id="saveBulk" class="good">Save to Bulk</button>
-      </div>
-
-      <div class="row" style="margin-top:10px;">
-        <button id="savePlayable" class="good" disabled>Save to Selected Playable Bucket</button>
-        <span id="selectedLoc" class="pill mono">No playable bucket selected</span>
-      </div>
+    <div class="small" style="margin:10px 0 6px;">Bulk chunks (75-card)</div>
+    <div class="row">
+      <select id="bulkRow">
+        <option>B</option><option>C</option><option>D</option><option>E</option>
+      </select>
+      <select id="bulkChunk"></select>
+      <span class="pill mono" id="selectedLoc">No location selected</span>
     </div>
   </section>
 
   <section class="card">
-    <h2 style="margin:0 0 8px 0; font-size:16px;">Find</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Your custom cards</h2>
 
     <div class="row">
-      <input id="search" placeholder="Search name (e.g., Iono, Rare Candy)" style="flex:1;">
-      <button id="runSearch" class="primary">Search</button>
+      <input id="customName" placeholder="Custom card name" style="flex:1;">
+      <input id="customSet" placeholder="Set (optional)" class="mono" style="width:140px;">
+      <input id="customNum" placeholder="# (optional)" class="mono" style="width:120px;">
+    </div>
+    <div style="margin-top:8px;">
+      <textarea id="customNotes" placeholder="Notes (optional): proxy, misprint, extra info…"></textarea>
     </div>
 
     <div class="row" style="margin-top:10px;">
+      <button id="addCustom" class="good">Add Custom Card</button>
       <button id="exportCsv">Export CSV</button>
       <button id="wipe" class="warn">Wipe Local Data</button>
       <span class="pill">Stored on this iPhone</span>
     </div>
 
-    <div id="results" class="results" style="margin-top:12px;"></div>
+    <hr class="divider">
+
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Results</h2>
+    <div id="results" class="results"></div>
   </section>
 </main>
 
-<canvas id="canvas" style="display:none;"></canvas>
-
 <script>
+  // --------------------------
+  // Config
+  // --------------------------
+  const API_BASE = "https://api.pokemontcg.io/v2/cards";
+
   // --------------------------
   // Bulk chunks 01..14
   // --------------------------
@@ -198,21 +172,102 @@
   }
 
   // --------------------------
-  // IndexedDB
+  // State: selected location
+  // --------------------------
+  let selectedLocValue = "";
+  const selectedLoc = document.getElementById("selectedLoc");
+
+  function bulkLoc(){
+    const r = document.getElementById("bulkRow").value;
+    const c = document.getElementById("bulkChunk").value;
+    return r + c;
+  }
+
+  document.getElementById("bulkRow").addEventListener("change", () => {
+    selectedLocValue = bulkLoc();
+    selectedLoc.textContent = selectedLocValue;
+  });
+  document.getElementById("bulkChunk").addEventListener("change", () => {
+    selectedLocValue = bulkLoc();
+    selectedLoc.textContent = selectedLocValue;
+  });
+
+  document.querySelectorAll(".pillBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedLocValue = btn.dataset.loc;
+      selectedLoc.textContent = selectedLocValue;
+    });
+  });
+
+  // default to B01
+  selectedLocValue = bulkLoc();
+  selectedLoc.textContent = selectedLocValue;
+
+  // --------------------------
+  // Pagination state (NEW)
+  // --------------------------
+  let currentPage = 1;
+  let lastQueryString = "";
+  let lastTotalCount = 0;
+
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const pagePill = document.getElementById("pagePill");
+
+  function updatePager(){
+    pagePill.textContent = `Page ${currentPage}`;
+    prevBtn.disabled = (currentPage <= 1);
+    // Next button enabled only if we know there are more results
+    const pageSize = Number(document.getElementById("pageSize").value || "48");
+    const shownSoFar = currentPage * pageSize;
+    nextBtn.disabled = !(lastTotalCount > shownSoFar);
+  }
+
+  prevBtn.addEventListener("click", async () => {
+    if (currentPage > 1) {
+      currentPage--;
+      await runSearch(true);
+    }
+  });
+
+  nextBtn.addEventListener("click", async () => {
+    const pageSize = Number(document.getElementById("pageSize").value || "48");
+    if (lastTotalCount > currentPage * pageSize) {
+      currentPage++;
+      await runSearch(true);
+    }
+  });
+
+  // Reset page to 1 whenever filters change
+  ["pageSize","exactToggle","set","number"].forEach(id => {
+    document.getElementById(id).addEventListener("change", () => { currentPage = 1; });
+  });
+
+  // --------------------------
+  // IndexedDB (entries + custom)
   // --------------------------
   const DB_NAME = "poke_locator_db";
   const STORE = "entries";
+  const STORE_CUSTOM = "custom_cards";
   let db;
 
   function openDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = () => {
         const db = req.result;
-        const store = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
-        store.createIndex("name", "name", { unique: false });
-        store.createIndex("loc", "loc", { unique: false });
-        store.createIndex("name_loc", ["name","loc"], { unique: false });
+
+        if (!db.objectStoreNames.contains(STORE)) {
+          const s = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+          s.createIndex("name", "name", { unique: false });
+          s.createIndex("loc", "loc", { unique: false });
+          s.createIndex("name_loc", ["name","loc"], { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(STORE_CUSTOM)) {
+          const c = db.createObjectStore(STORE_CUSTOM, { keyPath: "id", autoIncrement: true });
+          c.createIndex("name", "name", { unique: false });
+        }
       };
       req.onsuccess = () => { db = req.result; resolve(db); };
       req.onerror = () => reject(req.error);
@@ -228,471 +283,372 @@
     });
   }
 
-  function getAll(){
+  function addCustom(card){
     return new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE,"readonly");
-      const req = tx.objectStore(STORE).getAll();
+      const tx = db.transaction(STORE_CUSTOM, "readwrite");
+      tx.objectStore(STORE_CUSTOM).add(card);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  function deleteCustom(id){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_CUSTOM, "readwrite");
+      tx.objectStore(STORE_CUSTOM).delete(id);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  function getAll(storeName){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(storeName,"readonly");
+      const req = tx.objectStore(storeName).getAll();
       req.onsuccess = ()=>resolve(req.result);
       req.onerror = ()=>reject(req.error);
     });
   }
 
-  async function searchByName(q){
-    q = q.trim().toLowerCase();
-    const all = await getAll();
-    return all.filter(e => (e.name||"").toLowerCase().includes(q));
-  }
-
   async function wipeAll(){
-    return new Promise((resolve,reject)=>{
+    await new Promise((resolve,reject)=>{
       const tx = db.transaction(STORE,"readwrite");
       const req = tx.objectStore(STORE).clear();
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+    await new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_CUSTOM,"readwrite");
+      const req = tx.objectStore(STORE_CUSTOM).clear();
       req.onsuccess = ()=>resolve();
       req.onerror = ()=>reject(req.error);
     });
   }
 
   // --------------------------
-  // Camera
+  // API key handling
   // --------------------------
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
+  const apiKeyInput = document.getElementById("apiKey");
+  apiKeyInput.value = localStorage.getItem("poke_api_key") || "";
 
-  const startCam = document.getElementById('startCam');
-  const stopCam = document.getElementById('stopCam');
-  const snap = document.getElementById('snap');
-  const burstBtn = document.getElementById('burst');
-
-  const ocrStatus = document.getElementById('ocrStatus');
-  const nameInput = document.getElementById('name');
-  const variant = document.getElementById('variant');
-
-  const suggestionsEl = document.getElementById('suggestions');
-
-  const ocrBoxEl = document.getElementById('ocrBox');
-  const ocrLabelEl = document.getElementById('ocrLabel');
-
-  let stream = null;
-
-  async function startCamera(){
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      },
-      audio: false
-    });
-    video.srcObject = stream;
-
-    startCam.disabled = true;
-    stopCam.disabled = false;
-    snap.disabled = false;
-    burstBtn.disabled = false;
-
-    video.addEventListener("loadedmetadata", () => {
-      updateOcrOverlay("pokemon");
-      ocrBoxEl.style.display = "block";
-    }, { once: true });
-  }
-
-  function stopCamera(){
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = null;
-    startCam.disabled = false;
-    stopCam.disabled = true;
-    snap.disabled = true;
-    burstBtn.disabled = true;
-    ocrBoxEl.style.display = "none";
-  }
-
-  // Crop inside big frame (88% x 62% centered)
-  function captureCrop(){
-    const vw = video.videoWidth, vh = video.videoHeight;
-    canvas.width = vw; canvas.height = vh;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(video, 0, 0, vw, vh);
-
-    const cropW = Math.floor(vw * 0.88);
-    const cropH = Math.floor(vh * 0.62);
-    const x = Math.floor((vw - cropW)/2);
-    const y = Math.floor((vh - cropH)/2);
-
-    const img = ctx.getImageData(x, y, cropW, cropH);
-    const o = document.createElement("canvas");
-    o.width = cropW; o.height = cropH;
-    o.getContext("2d", { willReadFrequently: true }).putImageData(img, 0, 0);
-    return o;
-  }
+  document.getElementById("saveKey").addEventListener("click", () => {
+    localStorage.setItem("poke_api_key", apiKeyInput.value.trim());
+    setStatus("Key saved");
+  });
+  document.getElementById("clearKey").addEventListener("click", () => {
+    localStorage.removeItem("poke_api_key");
+    apiKeyInput.value = "";
+    setStatus("Key cleared");
+  });
 
   // --------------------------
-  // OCR worker
+  // UI helpers
   // --------------------------
-  let ocrWorker = null;
-  async function initWorker(){
-    if (ocrWorker) return;
-    ocrStatus.textContent = "Loading OCR…";
-    ocrWorker = await Tesseract.createWorker('eng');
-    await ocrWorker.setParameters({
-      tessedit_pageseg_mode: "7",
-      preserve_interword_spaces: "1",
-      load_system_dawg: "0",
-      load_freq_dawg: "0",
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'-: ."
-    });
-    ocrStatus.textContent = "OCR Ready";
-  }
-
-  // --------------------------
-  // Name-strip crop tuned from your sample card
-  // --------------------------
-  function getNameStripRect(w, h, mode = "pokemon") {
-    const y1 = Math.floor(h * 0.055);
-    const y2 = Math.floor(h * 0.165);
-    let x1, x2;
-    if (mode === "trainer") {
-      x1 = Math.floor(w * 0.08);
-      x2 = Math.floor(w * 0.92);
-    } else {
-      x1 = Math.floor(w * 0.18);
-      x2 = Math.floor(w * 0.78);
-    }
-    return { x: x1, y: y1, w: Math.max(10, x2 - x1), h: Math.max(10, y2 - y1) };
-  }
-
-  function cropCanvasRegion(srcCanvas, rect, upscale=3) {
-    const c = document.createElement("canvas");
-    c.width = rect.w * upscale;
-    c.height = rect.h * upscale;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(srcCanvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
-    return c;
-  }
-
-  function canvasToGrayArray(cnv) {
-    const ctx = cnv.getContext("2d", { willReadFrequently: true });
-    const img = ctx.getImageData(0, 0, cnv.width, cnv.height);
-    const d = img.data;
-    const gray = new Uint8ClampedArray(cnv.width * cnv.height);
-    for (let i=0, j=0; i<d.length; i+=4, j++){
-      gray[j] = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
-    }
-    return { gray, w: cnv.width, h: cnv.height };
-  }
-
-  function boxBlur(gray, w, h){
-    const out = new Uint8ClampedArray(gray.length);
-    const r = 1;
-    for (let y=0; y<h; y++){
-      for (let x=0; x<w; x++){
-        let sum=0, cnt=0;
-        for (let dy=-r; dy<=r; dy++){
-          const yy = y+dy;
-          if (yy<0 || yy>=h) continue;
-          for (let dx=-r; dx<=r; dx++){
-            const xx = x+dx;
-            if (xx<0 || xx>=w) continue;
-            sum += gray[yy*w + xx];
-            cnt++;
-          }
-        }
-        out[y*w + x] = (sum/cnt) | 0;
-      }
-    }
-    return out;
-  }
-
-  function grayToBWCanvas(gray, w, h, thresh, invert=false) {
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
-    const img = ctx.createImageData(w, h);
-    const d = img.data;
-    for (let i=0; i<gray.length; i++){
-      let v = gray[i] > thresh ? 255 : 0;
-      if (invert) v = 255 - v;
-      d[i*4] = d[i*4+1] = d[i*4+2] = v;
-      d[i*4+3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
-  }
-
-  function cleanNameCandidate(s){
-    s = (s || "").replace(/\s+/g, " ").trim();
-    s = s.replace(/^(Basic|Stage\s?\d|HP)\s+/i, "").trim();
-    s = s.replace(/[^A-Za-z0-9 '\-:.]/g, "").trim();
-    if (s.length > 28) s = s.slice(0, 28).trim();
-    return s;
-  }
-
-  function looksLikeName(s){
-    if (!s) return false;
-    if (s.length < 3) return false;
-    if (!/[A-Za-z]/.test(s)) return false;
-    const bad = [
-      "Pokémon","Trainer","Energy","Ability","Weakness","Resistance","Retreat",
-      "Attach","Search","Shuffle","Discard","Draw","Your","Opponent","Deck"
-    ];
-    if (bad.some(b => s.toLowerCase().includes(b.toLowerCase()))) return false;
-    return true;
-  }
-
-  async function recognizeAndScore(worker, canvasLike){
-    const res = await worker.recognize(canvasLike);
-    const firstLine = res.data.text.split("\n").map(l=>l.trim()).filter(Boolean)[0] || "";
-    const text = cleanNameCandidate(firstLine);
-
-    let conf = 0;
-    if (res.data && Array.isArray(res.data.words) && res.data.words.length){
-      const topWords = res.data.words
-        .map(w => ({ t: (w.text||"").trim(), c: (w.confidence ?? 0) }))
-        .filter(x => x.t.length >= 2);
-      if (topWords.length) conf = Math.max(...topWords.map(x => x.c));
-    }
-
-    let score = conf;
-    if (looksLikeName(text)) score += 15;
-    if (text.length >= 4 && text.length <= 18) score += 10;
-    if (/\d/.test(text)) score -= 4;
-
-    return { text, conf, score };
-  }
-
-  async function topNamesFromNameStrip(worker, cropCanvas) {
-    const w = cropCanvas.width, h = cropCanvas.height;
-
-    const rects = [
-      { mode: "pokemon", rect: getNameStripRect(w, h, "pokemon") },
-      { mode: "trainer", rect: getNameStripRect(w, h, "trainer") }
-    ];
-
-    const thresholds = [110, 125, 140, 155, 170];
-    const results = [];
-
-    for (const {mode, rect} of rects) {
-      const stripCanvas = cropCanvasRegion(cropCanvas, rect, 3);
-      const { gray, w:gw, h:gh } = canvasToGrayArray(stripCanvas);
-      const blurred = boxBlur(gray, gw, gh);
-
-      for (const t of thresholds) {
-        for (const inv of [false, true]) {
-          const bw = grayToBWCanvas(blurred, gw, gh, t, inv);
-          const r = await recognizeAndScore(worker, bw);
-          if (r.text) results.push({ ...r, label: `${mode}-t${t}${inv?'-inv':''}` });
-        }
-      }
-    }
-
-    const bestByText = new Map();
-    for (const r of results) {
-      const key = (r.text || "").toLowerCase();
-      const prev = bestByText.get(key);
-      if (!prev || r.score > prev.score) bestByText.set(key, r);
-    }
-
-    const unique = Array.from(bestByText.values()).sort((a,b)=> b.score - a.score);
-    const nameLike = unique.filter(r => looksLikeName(r.text));
-    const pool = nameLike.length ? nameLike : unique;
-
-    return pool.slice(0, 3);
-  }
-
-  // Suggestions UI
+  const statusEl = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+  function setStatus(s){ statusEl.textContent = s; }
   function escapeHtml(s){
     return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
   }
 
-  function renderSuggestions(suggestions){
-    suggestionsEl.innerHTML = "";
-    if (!suggestions || !suggestions.length){
-      const b = document.createElement("button");
-      b.className = "suggestBtn";
-      b.disabled = true;
-      b.textContent = "No suggestions (type name manually)";
-      suggestionsEl.appendChild(b);
+  function cardSubtitleFromApi(c){
+    const setName = c.set?.name ? c.set.name : "";
+    const setId = c.set?.id ? c.set.id : "";
+    const num = c.number ? c.number : "";
+    const rarity = c.rarity ? c.rarity : "";
+    const parts = [];
+    if (setName) parts.push(setName);
+    if (setId) parts.push(`(${setId})`);
+    if (num) parts.push(`#${num}`);
+    if (rarity) parts.push(rarity);
+    return parts.join(" • ");
+  }
+
+  function renderCardResult(item){
+    const img = item.image || "";
+    const title = item.name || "(no name)";
+    const subtitle = item.subtitle || "";
+    const idPart = item.kind === "api" ? `<span class="pill mono">API</span>` : `<span class="pill mono">CUSTOM</span>`;
+    const locPart = item.lastLoc ? `<span class="pill mono">Last: ${escapeHtml(item.lastLoc)}</span>` : "";
+
+    const div = document.createElement("div");
+    div.className = "resultItem";
+    div.innerHTML = `
+      <div>
+        ${img ? `<img class="thumb" src="${escapeHtml(img)}" alt="">` : `<div class="thumb"></div>`}
+      </div>
+      <div>
+        <div class="title">${escapeHtml(title)} ${idPart}</div>
+        <div class="meta">${escapeHtml(subtitle)}</div>
+        <div class="actions">
+          <button class="good" data-action="save" data-kind="${item.kind}" data-id="${escapeHtml(String(item.id))}">
+            Save → ${escapeHtml(selectedLocValue)}
+          </button>
+          <button data-action="copy" data-text="${escapeHtml(title)}">Copy name</button>
+          ${locPart}
+          ${item.kind === "custom" ? `<button class="warn" data-action="delCustom" data-id="${escapeHtml(String(item.id))}">Delete custom</button>` : ""}
+        </div>
+        ${item.notes ? `<div class="meta" style="margin-top:6px;">${escapeHtml(item.notes)}</div>` : ""}
+      </div>
+    `;
+
+    div.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const action = btn.dataset.action;
+        if (action === "copy") {
+          await navigator.clipboard.writeText(btn.dataset.text || "");
+          setStatus("Copied");
+        }
+        if (action === "save") {
+          const entry = {
+            name: title,
+            variant: "",
+            loc: selectedLocValue,
+            ts: new Date().toISOString(),
+            source: item.kind,
+            cardId: item.kind === "api" ? item.id : null,
+            setId: item.setId || "",
+            number: item.number || ""
+          };
+          await addEntry(entry);
+          setStatus(`Saved to ${selectedLocValue}`);
+          await runSearch(true);
+        }
+        if (action === "delCustom") {
+          if (confirm("Delete this custom card?")) {
+            await deleteCustom(Number(btn.dataset.id));
+            setStatus("Custom deleted");
+            await runSearch(true);
+          }
+        }
+      });
+    });
+
+    resultsEl.appendChild(div);
+  }
+
+  // --------------------------
+  // Query building (UPDATED: exact toggle + 3-char guard)
+  // --------------------------
+  function buildQuery(){
+    const name = document.getElementById("q").value.trim();
+    const set = document.getElementById("set").value.trim();
+    const num = document.getElementById("number").value.trim();
+    const exact = document.getElementById("exactToggle").checked;
+
+    const clauses = [];
+
+    if (name) {
+      const n = name.replace(/"/g, "");
+      if (exact) {
+        clauses.push(`name:"${n}"`);
+      } else if (n.includes(" ")) {
+        const parts = n.split(/\s+/).filter(Boolean).map(p => `*${p}*`);
+        clauses.push(`name:${parts.join(" AND name:")}`);
+      } else {
+        clauses.push(`name:*${n}*`);
+      }
+    } else {
+      // If no name, only allow if set/number provided
+      clauses.push(`name:*`);
+    }
+
+    if (set) clauses.push(`set.id:${set}`);
+    if (num) clauses.push(`number:${num}`);
+
+    return clauses.join(" AND ");
+  }
+
+  async function fetchApiCards(q, pageSize, page){
+    const url = new URL(API_BASE);
+    url.searchParams.set("q", q);
+    url.searchParams.set("pageSize", String(pageSize));
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("orderBy", "name");
+    url.searchParams.set("select", "id,name,set,number,images,rarity");
+
+    const headers = {};
+    const key = (localStorage.getItem("poke_api_key") || "").trim();
+    if (key) headers["X-Api-Key"] = key;
+
+    const res = await fetch(url.toString(), { headers });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    const json = await res.json();
+    // json.totalCount exists in v2 responses
+    return { data: json.data || [], totalCount: json.totalCount || 0 };
+  }
+
+  // --------------------------
+  // Search runner (UPDATED: 3-char guard + pagination)
+  // --------------------------
+  async function runSearch(isPaging=false){
+    resultsEl.innerHTML = "";
+
+    const qRaw = document.getElementById("q").value.trim();
+    const set = document.getElementById("set").value.trim();
+    const num = document.getElementById("number").value.trim();
+
+    // Guard: block truly empty searches
+    if (!qRaw && !set && !num){
+      setStatus("Type a name (or set/number)");
+      lastTotalCount = 0;
+      updatePager();
+      await renderCustomOnly();
       return;
     }
 
-    suggestions.forEach((sug, idx)=>{
-      const btn = document.createElement("button");
-      btn.className = "suggestBtn";
-      btn.innerHTML = `${escapeHtml(sug.text)} <span class="conf">conf ${Math.round(sug.conf||0)}</span>`;
-      btn.addEventListener("click", ()=>{
-        nameInput.value = sug.text;
-        [...suggestionsEl.querySelectorAll(".suggestBtn")].forEach(b=>b.classList.remove("selected"));
-        btn.classList.add("selected");
-        ocrStatus.textContent = "Selected ✓";
+    // Guard: if name provided but too short, require set/num
+    if (qRaw && qRaw.length < 3 && !set && !num){
+      setStatus("Type at least 3 letters (or use set/number)");
+      lastTotalCount = 0;
+      updatePager();
+      await renderCustomOnly();
+      return;
+    }
+
+    const pageSize = Number(document.getElementById("pageSize").value || "48");
+    const query = buildQuery();
+
+    // If not paging and query changed, reset to page 1
+    if (!isPaging && query !== lastQueryString){
+      currentPage = 1;
+    }
+    lastQueryString = query;
+
+    setStatus("Searching…");
+    updatePager();
+
+    let apiCards = [];
+    try {
+      const r = await fetchApiCards(query, pageSize, currentPage);
+      apiCards = r.data;
+      lastTotalCount = r.totalCount;
+    } catch (e) {
+      setStatus("API error (rate limit?)");
+      lastTotalCount = 0;
+      updatePager();
+      await renderCustomOnly();
+      return;
+    }
+
+    // Load local saved entries for “Last” location
+    const entries = await getAll(STORE);
+    const lastLocByName = new Map();
+    for (const e of entries) {
+      const key = (e.name||"").toLowerCase();
+      if (!key) continue;
+      const prev = lastLocByName.get(key);
+      if (!prev || (e.ts > prev.ts)) lastLocByName.set(key, { loc: e.loc, ts: e.ts });
+    }
+
+    // Custom cards match the name filter (if present)
+    const customs = await getAll(STORE_CUSTOM);
+    const qLower = qRaw.toLowerCase();
+    const customMatches = customs.filter(c => {
+      if (!qRaw) return true;
+      return (c.name||"").toLowerCase().includes(qLower);
+    });
+
+    for (const c of customMatches) {
+      const last = lastLocByName.get((c.name||"").toLowerCase());
+      renderCardResult({
+        kind: "custom",
+        id: c.id,
+        name: c.name,
+        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
+        image: "",
+        notes: c.notes || "",
+        setId: c.setId || "",
+        number: c.number || "",
+        lastLoc: last ? last.loc : ""
       });
-      if (idx === 0) btn.classList.add("selected");
-      suggestionsEl.appendChild(btn);
-    });
+    }
+
+    for (const c of apiCards) {
+      const last = lastLocByName.get((c.name||"").toLowerCase());
+      renderCardResult({
+        kind: "api",
+        id: c.id,
+        name: c.name,
+        subtitle: cardSubtitleFromApi(c),
+        image: c.images?.small || c.images?.large || "",
+        setId: c.set?.id || "",
+        number: c.number || "",
+        lastLoc: last ? last.loc : ""
+      });
+    }
+
+    setStatus(`Found: ${customMatches.length} custom + ${apiCards.length} API`);
+    updatePager();
   }
 
-  // Tiny overlay box positioning
-  function updateOcrOverlay(mode="pokemon"){
-    const rectRatios = (mode === "trainer")
-      ? { x: 0.08, y: 0.055, w: 0.84, h: 0.11 }
-      : { x: 0.18, y: 0.055, w: 0.60, h: 0.11 };
-
-    const frameW = 0.88, frameH = 0.62;
-    const frameX = (1 - frameW) / 2;
-    const frameY = (1 - frameH) / 2;
-
-    const left = (frameX + rectRatios.x * frameW) * 100;
-    const top  = (frameY + rectRatios.y * frameH) * 100;
-    const width = (rectRatios.w * frameW) * 100;
-    const height= (rectRatios.h * frameH) * 100;
-
-    ocrBoxEl.style.left = left + "%";
-    ocrBoxEl.style.top = top + "%";
-    ocrBoxEl.style.width = width + "%";
-    ocrBoxEl.style.height = height + "%";
-    ocrLabelEl.textContent = (mode === "trainer") ? "NAME OCR (Trainer)" : "NAME OCR (Pokémon)";
-  }
-
-  // Scan functions
-  async function runSingleScan(){
-    await initWorker();
-    ocrStatus.textContent = "Capturing…";
-
-    updateOcrOverlay("pokemon");
-    ocrBoxEl.style.display = "block";
-
-    const cropCanvas = captureCrop();
-
-    ocrStatus.textContent = "OCR…";
-    const top3 = await topNamesFromNameStrip(ocrWorker, cropCanvas);
-
-    if (top3 && top3[0] && (top3[0].text.length > 14 || top3[0].text.includes(":"))) {
-      updateOcrOverlay("trainer");
-    } else {
-      updateOcrOverlay("pokemon");
+  async function renderCustomOnly(){
+    resultsEl.innerHTML = "";
+    const customs = await getAll(STORE_CUSTOM);
+    if (!customs.length) {
+      resultsEl.innerHTML = `<div class="card">No results yet. Add a custom card or search by name.</div>`;
+      return;
     }
-
-    renderSuggestions(top3);
-
-    if (top3.length){
-      nameInput.value = top3[0].text;
-      ocrStatus.textContent = "OCR OK (name strip)";
-    } else {
-      ocrStatus.textContent = "OCR weak — type name";
-    }
-    return top3;
-  }
-
-  async function runBurstScan(){
-    await initWorker();
-    ocrStatus.textContent = "Burst…";
-
-    const allSuggestions = [];
-    for (let i=0; i<3; i++){
-      const top3 = await runSingleScan();
-      allSuggestions.push(...top3);
-      await new Promise(r => setTimeout(r, 180));
-    }
-
-    const map = new Map();
-    for (const s of allSuggestions){
-      const key = (s.text||"").toLowerCase();
-      const prev = map.get(key);
-      if (!prev || s.score > prev.score) map.set(key, s);
-    }
-    const merged = Array.from(map.values()).sort((a,b)=> b.score - a.score).slice(0,3);
-
-    renderSuggestions(merged);
-    if (merged.length){
-      nameInput.value = merged[0].text;
-      ocrStatus.textContent = "Burst OK ✓ (name strip)";
-    } else {
-      ocrStatus.textContent = "Burst weak — type name";
+    for (const c of customs) {
+      renderCardResult({
+        kind: "custom",
+        id: c.id,
+        name: c.name,
+        subtitle: [c.setId ? `set:${c.setId}` : "", c.number ? `#${c.number}` : ""].filter(Boolean).join(" • "),
+        image: "",
+        notes: c.notes || "",
+        setId: c.setId || "",
+        number: c.number || ""
+      });
     }
   }
 
-  // Location selection
-  const locButtons = document.querySelectorAll(".pillBtn");
-  const selectedLoc = document.getElementById("selectedLoc");
-  const savePlayable = document.getElementById("savePlayable");
-  let playableLoc = "";
+  // --------------------------
+  // Custom add
+  // --------------------------
+  document.getElementById("addCustom").addEventListener("click", async () => {
+    const name = document.getElementById("customName").value.trim();
+    if (!name) return alert("Enter a custom card name.");
 
-  locButtons.forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      playableLoc = btn.dataset.loc;
-      selectedLoc.textContent = playableLoc;
-      savePlayable.disabled = false;
-      locButtons.forEach(b=>b.style.opacity="0.7");
-      btn.style.opacity="1.0";
-    });
+    const setId = document.getElementById("customSet").value.trim();
+    const number = document.getElementById("customNum").value.trim();
+    const notes = document.getElementById("customNotes").value.trim();
+
+    await addCustom({ name, setId, number, notes, created: new Date().toISOString() });
+
+    document.getElementById("customName").value = "";
+    document.getElementById("customSet").value = "";
+    document.getElementById("customNum").value = "";
+    document.getElementById("customNotes").value = "";
+
+    setStatus("Custom added");
+    await runSearch(false);
   });
 
-  function bulkLoc(){
-    const r = document.getElementById("bulkRow").value;
-    const c = document.getElementById("bulkChunk").value;
-    return r + c;
-  }
+  // --------------------------
+  // Export / wipe
+  // --------------------------
+  document.getElementById("exportCsv").addEventListener("click", async () => {
+    const entries = await getAll(STORE);
+    const customs = await getAll(STORE_CUSTOM);
 
-  async function save(loc){
-    const name = nameInput.value.trim();
-    if (!name) { alert("Enter/scan a card name first."); return; }
-    const entry = {
-      name,
-      variant: variant.value || "",
-      loc,
-      ts: new Date().toISOString()
-    };
-    await addEntry(entry);
-    ocrStatus.textContent = "Saved ✓";
-  }
-
-  // Find + render
-  function renderResults(items){
-    const wrap = document.getElementById("results");
-    wrap.innerHTML = "";
-    if (!items.length){
-      wrap.innerHTML = `<div class="resultItem">No matches.</div>`;
-      return;
-    }
-
-    const agg = new Map();
-    for (const it of items){
-      const key = [it.name, it.variant||"", it.loc].join("||");
-      agg.set(key, (agg.get(key)||0) + 1);
-    }
-
-    const rows = Array.from(agg.entries())
-      .map(([k, qty]) => {
-        const [name, variant, loc] = k.split("||");
-        return { name, variant, loc, qty };
-      })
-      .sort((a,b)=> a.name.localeCompare(b.name) || a.loc.localeCompare(b.loc));
-
-    for (const r of rows){
-      const div = document.createElement("div");
-      div.className = "resultItem";
-      div.innerHTML = `
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-          <div>
-            <div style="font-weight:700;">${escapeHtml(r.name)} ${r.variant ? `<span class="pill">${escapeHtml(r.variant)}</span>` : ""}</div>
-            <div class="small mono">Location: ${escapeHtml(r.loc)}</div>
-          </div>
-          <div class="pill mono">x${r.qty}</div>
-        </div>
-      `;
-      wrap.appendChild(div);
-    }
-  }
-
-  // CSV export
-  async function exportCSV(){
-    const all = await getAll();
-    if (!all.length){ alert("No data to export."); return; }
-    const header = ["name","variant","loc","timestamp"];
+    const header = ["type","name","setId","number","loc","timestamp","notes","cardId"];
     const lines = [header.join(",")];
-    for (const e of all){
-      const row = [e.name, e.variant||"", e.loc, e.ts].map(v => `"${String(v).replaceAll('"','""')}"`);
+
+    for (const e of entries){
+      const row = [
+        "entry", e.name||"", e.setId||"", e.number||"", e.loc||"", e.ts||"", "", e.cardId||""
+      ].map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
+
+    for (const c of customs){
+      const row = [
+        "custom", c.name||"", c.setId||"", c.number||"", "", c.created||"", c.notes||"", ""
+      ].map(v => `"${String(v).replaceAll('"','""')}"`);
+      lines.push(row.join(","));
+    }
+
     const blob = new Blob([lines.join("\n")], { type:"text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -700,72 +656,46 @@
     a.download = "poke_locator_export.csv";
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // Wire up UI
-  startCam.addEventListener("click", async ()=>{
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false
-      });
-      video.srcObject = stream;
-
-      startCam.disabled = true;
-      stopCam.disabled = false;
-      snap.disabled = false;
-      burstBtn.disabled = false;
-
-      video.addEventListener("loadedmetadata", () => {
-        updateOcrOverlay("pokemon");
-        ocrBoxEl.style.display = "block";
-      }, { once: true });
-
-    } catch(e){
-      alert("Camera failed. Make sure you opened the GitHub Pages (https://...github.io/...) URL and allowed camera access.");
-    }
   });
 
-  stopCam.addEventListener("click", stopCamera);
-
-  snap.addEventListener("click", async ()=>{
-    try { await runSingleScan(); }
-    catch(e){ console.error(e); ocrStatus.textContent = "OCR error"; alert("OCR error. Try better light / less glare."); }
-  });
-
-  burstBtn.addEventListener("click", async ()=>{
-    try { await runBurstScan(); }
-    catch(e){ console.error(e); ocrStatus.textContent = "OCR error"; alert("OCR error. Try better light / less glare."); }
-  });
-
-  document.getElementById("saveBulk").addEventListener("click", async ()=>{ await save(bulkLoc()); });
-  savePlayable.addEventListener("click", async ()=>{ await save(playableLoc); });
-
-  document.getElementById("runSearch").addEventListener("click", async ()=>{
-    const q = document.getElementById("search").value;
-    const hits = await searchByName(q);
-    renderResults(hits);
-  });
-
-  document.getElementById("exportCsv").addEventListener("click", exportCSV);
-
-  document.getElementById("wipe").addEventListener("click", async ()=>{
-    if (confirm("This deletes ALL saved entries on this iPhone. Continue?")){
+  document.getElementById("wipe").addEventListener("click", async () => {
+    if (confirm("This deletes ALL saved entries + custom cards on this iPhone. Continue?")) {
       await wipeAll();
-      renderResults([]);
+      setStatus("Wiped");
+      lastTotalCount = 0;
+      currentPage = 1;
+      updatePager();
+      await renderCustomOnly();
     }
   });
 
-  (async ()=>{
+  // --------------------------
+  // Search events
+  // --------------------------
+  document.getElementById("searchBtn").addEventListener("click", async () => {
+    currentPage = 1;
+    await runSearch(false);
+  });
+
+  document.getElementById("q").addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      currentPage = 1;
+      await runSearch(false);
+    }
+  });
+
+  // --------------------------
+  // Init
+  // --------------------------
+  (async () => {
     await openDB();
-    renderResults([]);
-    renderSuggestions([]);
+    await renderCustomOnly();
+    updatePager();
+
     if ("serviceWorker" in navigator){
       try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
     }
   })();
-
-  window.addEventListener("resize", () => { if (stream) updateOcrOverlay("pokemon"); });
 </script>
 </body>
 </html>
