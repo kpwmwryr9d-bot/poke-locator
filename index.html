@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Poké Locator</title>
 
-  <!-- If your manifest file is named manifest.webmanifest, change href accordingly -->
-  <link rel="manifest" href="manifest.json">
+  <!-- UPDATED: manifest.webmanifest -->
+  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#111111">
 
   <style>
@@ -28,6 +28,8 @@
     .pill { padding: 6px 10px; border-radius: 999px; background:#1a1a1a; border:1px solid #2a2a2a; font-size: 13px; }
     #videoWrap { position: relative; overflow:hidden; border-radius: var(--radius); border:1px solid #2a2a2a; background:#000; }
     video { width:100%; height:auto; display:block; }
+
+    /* Big framing guide */
     .overlay { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; }
     .frame {
       width: 88%; height: 62%;
@@ -35,6 +37,27 @@
       border-radius: 14px;
       box-shadow: 0 0 0 9999px rgba(0,0,0,.25);
     }
+
+    /* Tiny OCR region overlay box */
+    .ocrBox {
+      position:absolute;
+      border: 2px solid rgba(0, 255, 140, 0.85);
+      border-radius: 6px;
+      pointer-events:none;
+    }
+    .ocrLabel {
+      position:absolute;
+      background: rgba(0,255,140,0.85);
+      color:#000;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      transform: translateY(-110%);
+      pointer-events:none;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
     .small { font-size: 13px; opacity:.85; }
     .results { display:grid; gap:10px; }
     .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; }
@@ -68,7 +91,15 @@
 
     <div id="videoWrap">
       <video id="video" playsinline autoplay></video>
-      <div class="overlay"><div class="frame"></div></div>
+
+      <div class="overlay">
+        <div class="frame"></div>
+      </div>
+
+      <!-- Tiny OCR box overlay (positioned by JS) -->
+      <div id="ocrBox" class="ocrBox" style="display:none;">
+        <div class="ocrLabel" id="ocrLabel">NAME OCR</div>
+      </div>
     </div>
 
     <div class="row" style="margin-top:10px;">
@@ -226,15 +257,20 @@
   // --------------------------
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
+
   const startCam = document.getElementById('startCam');
   const stopCam = document.getElementById('stopCam');
   const snap = document.getElementById('snap');
   const burstBtn = document.getElementById('burst');
+
   const ocrStatus = document.getElementById('ocrStatus');
   const nameInput = document.getElementById('name');
   const variant = document.getElementById('variant');
 
   const suggestionsEl = document.getElementById('suggestions');
+
+  const ocrBoxEl = document.getElementById('ocrBox');
+  const ocrLabelEl = document.getElementById('ocrLabel');
 
   let stream = null;
 
@@ -248,10 +284,16 @@
       audio: false
     });
     video.srcObject = stream;
+
     startCam.disabled = true;
     stopCam.disabled = false;
     snap.disabled = false;
     burstBtn.disabled = false;
+
+    video.addEventListener("loadedmetadata", () => {
+      updateOcrOverlay("pokemon");
+      ocrBoxEl.style.display = "block";
+    }, { once: true });
   }
 
   function stopCamera(){
@@ -261,23 +303,22 @@
     stopCam.disabled = true;
     snap.disabled = true;
     burstBtn.disabled = true;
+    ocrBoxEl.style.display = "none";
   }
 
-  // Capture crop region inside the on-screen frame (approx)
+  // Crop inside big frame (88% x 62% centered)
   function captureCrop(){
     const vw = video.videoWidth, vh = video.videoHeight;
     canvas.width = vw; canvas.height = vh;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(video, 0, 0, vw, vh);
 
-    // frame box is 88% width, 62% height centered
     const cropW = Math.floor(vw * 0.88);
     const cropH = Math.floor(vh * 0.62);
     const x = Math.floor((vw - cropW)/2);
     const y = Math.floor((vh - cropH)/2);
 
     const img = ctx.getImageData(x, y, cropW, cropH);
-
     const o = document.createElement("canvas");
     o.width = cropW; o.height = cropH;
     o.getContext("2d", { willReadFrequently: true }).putImageData(img, 0, 0);
@@ -285,36 +326,59 @@
   }
 
   // --------------------------
-  // OCR Worker (persistent)
+  // OCR worker
   // --------------------------
   let ocrWorker = null;
   async function initWorker(){
     if (ocrWorker) return;
-
     ocrStatus.textContent = "Loading OCR…";
     ocrWorker = await Tesseract.createWorker('eng');
-
     await ocrWorker.setParameters({
-      tessedit_pageseg_mode: "7", // SINGLE_LINE
+      tessedit_pageseg_mode: "7",
       preserve_interword_spaces: "1",
       load_system_dawg: "0",
       load_freq_dawg: "0",
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'-: ."
     });
-
     ocrStatus.textContent = "OCR Ready";
   }
 
   // --------------------------
-  // Preprocessing utilities
+  // Name-strip crop tuned from your sample card
   // --------------------------
-  function toGrayscale(imgData){
-    const d = imgData.data;
-    const gray = new Uint8ClampedArray(imgData.width * imgData.height);
+  function getNameStripRect(w, h, mode = "pokemon") {
+    const y1 = Math.floor(h * 0.055);
+    const y2 = Math.floor(h * 0.165);
+    let x1, x2;
+    if (mode === "trainer") {
+      x1 = Math.floor(w * 0.08);
+      x2 = Math.floor(w * 0.92);
+    } else {
+      x1 = Math.floor(w * 0.18);
+      x2 = Math.floor(w * 0.78);
+    }
+    return { x: x1, y: y1, w: Math.max(10, x2 - x1), h: Math.max(10, y2 - y1) };
+  }
+
+  function cropCanvasRegion(srcCanvas, rect, upscale=3) {
+    const c = document.createElement("canvas");
+    c.width = rect.w * upscale;
+    c.height = rect.h * upscale;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(srcCanvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  function canvasToGrayArray(cnv) {
+    const ctx = cnv.getContext("2d", { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, cnv.width, cnv.height);
+    const d = img.data;
+    const gray = new Uint8ClampedArray(cnv.width * cnv.height);
     for (let i=0, j=0; i<d.length; i+=4, j++){
       gray[j] = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
     }
-    return gray;
+    return { gray, w: cnv.width, h: cnv.height };
   }
 
   function boxBlur(gray, w, h){
@@ -339,77 +403,20 @@
     return out;
   }
 
-  function thresholdToCanvas(gray, w, h, thresh, invert=false, upscale=3){
+  function grayToBWCanvas(gray, w, h, thresh, invert=false) {
     const c = document.createElement("canvas");
-    c.width = w * upscale;
-    c.height = h * upscale;
+    c.width = w; c.height = h;
     const ctx = c.getContext("2d", { willReadFrequently: true });
     const img = ctx.createImageData(w, h);
     const d = img.data;
-
     for (let i=0; i<gray.length; i++){
       let v = gray[i] > thresh ? 255 : 0;
       if (invert) v = 255 - v;
       d[i*4] = d[i*4+1] = d[i*4+2] = v;
       d[i*4+3] = 255;
     }
-
-    const tmp = document.createElement("canvas");
-    tmp.width = w; tmp.height = h;
-    tmp.getContext("2d", { willReadFrequently: true }).putImageData(img, 0, 0);
-
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(tmp, 0, 0, c.width, c.height);
+    ctx.putImageData(img, 0, 0);
     return c;
-  }
-
-  // Balanced for Pokémon + Trainers:
-  // - search top 42% of crop
-  // - band height 16% of crop
-  function findNameBand(gray, w, h){
-    const yStart = Math.floor(h * 0.03);
-    const yEnd   = Math.floor(h * 0.42);
-    const bandH = Math.max(22, Math.floor(h * 0.16));
-    const step = 4;
-
-    let bestY = yStart;
-    let bestScore = -1;
-
-    for (let y = yStart; y + bandH < yEnd; y += step){
-      let dark = 0, total = 0;
-      for (let yy=y; yy<y+bandH; yy+=2){
-        const row = yy*w;
-        for (let x=Math.floor(w*0.06); x<Math.floor(w*0.94); x+=2){
-          const v = gray[row + x];
-          if (v < 120) dark++;
-          total++;
-        }
-      }
-      const ratio = dark / total;
-      const score = ratio - Math.abs(ratio - 0.18) * 0.8;
-      if (score > bestScore){
-        bestScore = score;
-        bestY = y;
-      }
-    }
-
-    const x = Math.floor(w * 0.06);
-    const bw = Math.floor(w * 0.88);
-    return { x, y: bestY, w: bw, h: bandH };
-  }
-
-  function extractBandGray(gray, w, h, band){
-    const outW = band.w;
-    const outH = band.h;
-    const out = new Uint8ClampedArray(outW * outH);
-    for (let yy=0; yy<outH; yy++){
-      const srcRow = (band.y + yy) * w + band.x;
-      const dstRow = yy * outW;
-      for (let xx=0; xx<outW; xx++){
-        out[dstRow + xx] = gray[srcRow + xx];
-      }
-    }
-    return { gray: out, w: outW, h: outH };
   }
 
   function cleanNameCandidate(s){
@@ -424,7 +431,6 @@
     if (!s) return false;
     if (s.length < 3) return false;
     if (!/[A-Za-z]/.test(s)) return false;
-
     const bad = [
       "Pokémon","Trainer","Energy","Ability","Weakness","Resistance","Retreat",
       "Attach","Search","Shuffle","Discard","Draw","Your","Opponent","Deck"
@@ -454,42 +460,48 @@
     return { text, conf, score };
   }
 
-  async function topNamesFromBand(worker, bandGrayObj){
-    const { gray, w, h } = bandGrayObj;
-    const blurred = boxBlur(gray, w, h);
+  async function topNamesFromNameStrip(worker, cropCanvas) {
+    const w = cropCanvas.width, h = cropCanvas.height;
 
-    // Balanced thresholds for Pokémon + Trainers
-    const thresholds = [115, 130, 145, 160];
-    const attempts = [];
+    const rects = [
+      { mode: "pokemon", rect: getNameStripRect(w, h, "pokemon") },
+      { mode: "trainer", rect: getNameStripRect(w, h, "trainer") }
+    ];
 
-    for (const t of thresholds){
-      attempts.push({ canvas: thresholdToCanvas(blurred, w, h, t, false, 3), label: `t${t}` });
-      attempts.push({ canvas: thresholdToCanvas(blurred, w, h, t, true, 3),  label: `t${t}-inv` });
+    const thresholds = [110, 125, 140, 155, 170];
+    const results = [];
+
+    for (const {mode, rect} of rects) {
+      const stripCanvas = cropCanvasRegion(cropCanvas, rect, 3);
+      const { gray, w:gw, h:gh } = canvasToGrayArray(stripCanvas);
+      const blurred = boxBlur(gray, gw, gh);
+
+      for (const t of thresholds) {
+        for (const inv of [false, true]) {
+          const bw = grayToBWCanvas(blurred, gw, gh, t, inv);
+          const r = await recognizeAndScore(worker, bw);
+          if (r.text) results.push({ ...r, label: `${mode}-t${t}${inv?'-inv':''}` });
+        }
+      }
     }
 
-    const scored = [];
-    for (const a of attempts){
-      const r = await recognizeAndScore(worker, a.canvas);
-      if (r.text) scored.push({ ...r, label: a.label });
-    }
-
-    // Deduplicate by text (keep best score)
     const bestByText = new Map();
-    for (const r of scored){
-      const key = r.text.toLowerCase();
+    for (const r of results) {
+      const key = (r.text || "").toLowerCase();
       const prev = bestByText.get(key);
       if (!prev || r.score > prev.score) bestByText.set(key, r);
     }
 
-    const unique = Array.from(bestByText.values())
-      .sort((a,b)=> b.score - a.score)
-      .filter(r => r.text.length >= 3);
-
-    // Prefer "name-like" results
+    const unique = Array.from(bestByText.values()).sort((a,b)=> b.score - a.score);
     const nameLike = unique.filter(r => looksLikeName(r.text));
     const pool = nameLike.length ? nameLike : unique;
 
     return pool.slice(0, 3);
+  }
+
+  // Suggestions UI
+  function escapeHtml(s){
+    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
   }
 
   function renderSuggestions(suggestions){
@@ -509,7 +521,6 @@
       btn.innerHTML = `${escapeHtml(sug.text)} <span class="conf">conf ${Math.round(sug.conf||0)}</span>`;
       btn.addEventListener("click", ()=>{
         nameInput.value = sug.text;
-        // highlight selected
         [...suggestionsEl.querySelectorAll(".suggestBtn")].forEach(b=>b.classList.remove("selected"));
         btn.classList.add("selected");
         ocrStatus.textContent = "Selected ✓";
@@ -519,28 +530,52 @@
     });
   }
 
+  // Tiny overlay box positioning
+  function updateOcrOverlay(mode="pokemon"){
+    const rectRatios = (mode === "trainer")
+      ? { x: 0.08, y: 0.055, w: 0.84, h: 0.11 }
+      : { x: 0.18, y: 0.055, w: 0.60, h: 0.11 };
+
+    const frameW = 0.88, frameH = 0.62;
+    const frameX = (1 - frameW) / 2;
+    const frameY = (1 - frameH) / 2;
+
+    const left = (frameX + rectRatios.x * frameW) * 100;
+    const top  = (frameY + rectRatios.y * frameH) * 100;
+    const width = (rectRatios.w * frameW) * 100;
+    const height= (rectRatios.h * frameH) * 100;
+
+    ocrBoxEl.style.left = left + "%";
+    ocrBoxEl.style.top = top + "%";
+    ocrBoxEl.style.width = width + "%";
+    ocrBoxEl.style.height = height + "%";
+    ocrLabelEl.textContent = (mode === "trainer") ? "NAME OCR (Trainer)" : "NAME OCR (Pokémon)";
+  }
+
+  // Scan functions
   async function runSingleScan(){
     await initWorker();
     ocrStatus.textContent = "Capturing…";
 
+    updateOcrOverlay("pokemon");
+    ocrBoxEl.style.display = "block";
+
     const cropCanvas = captureCrop();
-    const ctx = cropCanvas.getContext("2d", { willReadFrequently: true });
-    const imgData = ctx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
-
-    const grayFull = toGrayscale(imgData);
-    const w = cropCanvas.width, h = cropCanvas.height;
-
-    const band = findNameBand(grayFull, w, h);
-    const bandGray = extractBandGray(grayFull, w, h, band);
 
     ocrStatus.textContent = "OCR…";
-    const top3 = await topNamesFromBand(ocrWorker, bandGray);
+    const top3 = await topNamesFromNameStrip(ocrWorker, cropCanvas);
+
+    if (top3 && top3[0] && (top3[0].text.length > 14 || top3[0].text.includes(":"))) {
+      updateOcrOverlay("trainer");
+    } else {
+      updateOcrOverlay("pokemon");
+    }
 
     renderSuggestions(top3);
 
     if (top3.length){
       nameInput.value = top3[0].text;
-      ocrStatus.textContent = "OCR OK (top-3)";
+      ocrStatus.textContent = "OCR OK (name strip)";
     } else {
       ocrStatus.textContent = "OCR weak — type name";
     }
@@ -558,7 +593,6 @@
       await new Promise(r => setTimeout(r, 180));
     }
 
-    // Deduplicate + sort again across the burst
     const map = new Map();
     for (const s of allSuggestions){
       const key = (s.text||"").toLowerCase();
@@ -570,15 +604,13 @@
     renderSuggestions(merged);
     if (merged.length){
       nameInput.value = merged[0].text;
-      ocrStatus.textContent = "Burst OK ✓ (top-3)";
+      ocrStatus.textContent = "Burst OK ✓ (name strip)";
     } else {
       ocrStatus.textContent = "Burst weak — type name";
     }
   }
 
-  // --------------------------
   // Location selection
-  // --------------------------
   const locButtons = document.querySelectorAll(".pillBtn");
   const selectedLoc = document.getElementById("selectedLoc");
   const savePlayable = document.getElementById("savePlayable");
@@ -613,9 +645,7 @@
     ocrStatus.textContent = "Saved ✓";
   }
 
-  // --------------------------
-  // Find + render aggregated
-  // --------------------------
+  // Find + render
   function renderResults(items){
     const wrap = document.getElementById("results");
     wrap.innerHTML = "";
@@ -653,13 +683,7 @@
     }
   }
 
-  function escapeHtml(s){
-    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-  }
-
-  // --------------------------
   // CSV export
-  // --------------------------
   async function exportCSV(){
     const all = await getAll();
     if (!all.length){ alert("No data to export."); return; }
@@ -678,13 +702,30 @@
     URL.revokeObjectURL(url);
   }
 
-  // --------------------------
   // Wire up UI
-  // --------------------------
   startCam.addEventListener("click", async ()=>{
-    try { await startCamera(); }
-    catch(e){ alert("Camera failed. Make sure you opened the GitHub Pages (https://...github.io/...) URL and allowed camera access."); }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      video.srcObject = stream;
+
+      startCam.disabled = true;
+      stopCam.disabled = false;
+      snap.disabled = false;
+      burstBtn.disabled = false;
+
+      video.addEventListener("loadedmetadata", () => {
+        updateOcrOverlay("pokemon");
+        ocrBoxEl.style.display = "block";
+      }, { once: true });
+
+    } catch(e){
+      alert("Camera failed. Make sure you opened the GitHub Pages (https://...github.io/...) URL and allowed camera access.");
+    }
   });
+
   stopCam.addEventListener("click", stopCamera);
 
   snap.addEventListener("click", async ()=>{
@@ -715,7 +756,6 @@
     }
   });
 
-  // Register service worker if you have it (won’t break if missing)
   (async ()=>{
     await openDB();
     renderResults([]);
@@ -724,6 +764,8 @@
       try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
     }
   })();
+
+  window.addEventListener("resize", () => { if (stream) updateOcrOverlay("pokemon"); });
 </script>
 </body>
 </html>
