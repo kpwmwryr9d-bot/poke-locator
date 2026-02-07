@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Poké Locator — Name Logger</title>
+  <title>Poké Locator — Local Index</title>
 
+  <!-- Keep your existing manifest -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#111111">
 
@@ -50,7 +51,7 @@
       overflow:hidden;
       z-index: 10;
       display:none;
-      max-height: 320px;
+      max-height: 340px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
@@ -97,12 +98,13 @@
 <header>
   <div class="row" style="justify-content:space-between;">
     <h1>Poké Locator</h1>
-    <span class="pill">API name search • no photos</span>
+    <span class="pill" id="indexPill">Index: …</span>
   </div>
 </header>
 
 <main class="grid">
 
+  <!-- LEFT: Log by name + local suggestions -->
   <section class="card">
     <h2 style="margin:0 0 10px 0; font-size:16px;">Log a card name</h2>
 
@@ -112,21 +114,16 @@
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <label class="toggle" title="Exact uses name:&quot;Iono&quot; ; otherwise contains (name:*iono*)">
-        <input type="checkbox" id="exactToggle">
-        Exact
+      <label class="toggle" title="Prefix tries to match the start of the name first (faster + cleaner).">
+        <input type="checkbox" id="prefixToggle" checked>
+        Prefix first
       </label>
-      <span id="status" class="pill">Ready</span>
-    </div>
-
-    <div class="row" style="margin-top:10px;">
-      <input id="apiKey" placeholder="Optional API key (X-Api-Key)" style="flex:1;">
-      <button id="saveKey">Save Key</button>
-      <button id="clearKey" class="warn">Clear</button>
+      <span id="status" class="pill">Starting…</span>
     </div>
 
     <div class="hint" style="margin-top:8px;">
-      Suggestions start at <b>3+ letters</b> and return text only (name + set id + number). No images.
+      Uses <b>local index</b> (card-names.min.json) cached on your iPhone for instant search.
+      First load may take a bit; after that it’s offline-fast.
     </div>
 
     <div id="errBox" class="errBox"></div>
@@ -153,20 +150,22 @@
     <div class="row" style="margin-top:12px;">
       <button id="saveBtn" class="good">Save Name → Location</button>
       <button id="clearBtn">Clear</button>
+      <button id="refreshIndex" class="primary">Refresh Index</button>
+    </div>
+
+    <div class="hint" style="margin-top:8px;">
+      <b>Refresh Index</b> re-downloads card-names.min.json from your site and updates your on-phone cache.
     </div>
   </section>
 
+  <!-- RIGHT: Your logs + export -->
   <section class="card">
-    <h2 style="margin:0 0 10px 0; font-size:16px;">Custom names + Find</h2>
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Find logged names</h2>
 
     <div class="row">
-      <input id="customName" placeholder="Add custom name (optional)" style="flex:1;">
-      <button id="addCustom" class="primary">Add Custom</button>
-    </div>
-
-    <div class="row" style="margin-top:10px;">
       <input id="search" placeholder="Search your logged names" style="flex:1;">
       <button id="runSearch" class="primary">Search</button>
+      <button id="showAll">All</button>
     </div>
 
     <div class="row" style="margin-top:10px;">
@@ -183,26 +182,31 @@
 </main>
 
 <script>
-  // --------------------------
-  // Config
-  // --------------------------
-  const API_BASE = "https://api.pokemontcg.io/v2/cards";
+  // ============================================================
+  // 1) Local card-name index (cached in IndexedDB)
+  //    File expected at: https://kpwmwryr9d-bot.github.io/poke-locator/card-names.min.json
+  //    We use relative path so it works on GitHub Pages under /poke-locator/
+  // ============================================================
+  const LOCAL_INDEX_URL = "./card-names.min.json";
+  const INDEX_DB = "poke_locator_index_db";
+  const INDEX_STORE = "index";
+  let localIndex = null; // array of {n,s,no}
+
+  // ============================================================
+  // 2) Logs DB (your saved entries)
+  // ============================================================
   const DB_NAME = "poke_locator_db";
   const STORE_ENTRIES = "entries";
-  const STORE_CUSTOM = "custom_names";
 
-  // --------------------------
+  // ============================================================
   // DOM
-  // --------------------------
+  // ============================================================
   const nameEl = document.getElementById("name");
   const suggestListEl = document.getElementById("suggestList");
   const statusEl = document.getElementById("status");
   const errBox = document.getElementById("errBox");
-  const exactToggleEl = document.getElementById("exactToggle");
-
-  const apiKeyInput = document.getElementById("apiKey");
-  const saveKeyBtn = document.getElementById("saveKey");
-  const clearKeyBtn = document.getElementById("clearKey");
+  const indexPill = document.getElementById("indexPill");
+  const prefixToggleEl = document.getElementById("prefixToggle");
 
   const bulkRowEl = document.getElementById("bulkRow");
   const bulkChunkEl = document.getElementById("bulkChunk");
@@ -210,17 +214,16 @@
 
   const saveBtn = document.getElementById("saveBtn");
   const clearBtn = document.getElementById("clearBtn");
-
-  const customNameEl = document.getElementById("customName");
-  const addCustomBtn = document.getElementById("addCustom");
+  const refreshIndexBtn = document.getElementById("refreshIndex");
 
   const searchEl = document.getElementById("search");
   const runSearchBtn = document.getElementById("runSearch");
+  const showAllBtn = document.getElementById("showAll");
   const resultsEl = document.getElementById("results");
 
-  // --------------------------
+  // ============================================================
   // Bulk chunks 01..14
-  // --------------------------
+  // ============================================================
   for (let i=1;i<=14;i++){
     const opt = document.createElement("option");
     opt.value = String(i).padStart(2,"0");
@@ -228,17 +231,15 @@
     bulkChunkEl.appendChild(opt);
   }
 
-  // --------------------------
+  // ============================================================
   // Location selection
-  // --------------------------
+  // ============================================================
   let selectedLoc = "";
-
   function bulkLoc(){ return bulkRowEl.value + bulkChunkEl.value; }
   function setSelectedLoc(v){
     selectedLoc = v;
     selectedLocSpan.textContent = selectedLoc || "No location";
   }
-
   bulkRowEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
   bulkChunkEl.addEventListener("change", ()=> setSelectedLoc(bulkLoc()));
   document.querySelectorAll(".pillBtn").forEach(btn=>{
@@ -246,12 +247,93 @@
   });
   setSelectedLoc(bulkLoc());
 
-  // --------------------------
-  // IndexedDB
-  // --------------------------
-  let db;
+  // ============================================================
+  // UI helpers
+  // ============================================================
+  function setStatus(s){ statusEl.textContent = s; }
+  function showError(msg){ errBox.style.display="block"; errBox.textContent = msg; }
+  function clearError(){ errBox.style.display="none"; errBox.textContent = ""; }
+  function normalize(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 
-  function openDB(){
+  // ============================================================
+  // Index DB helpers
+  // ============================================================
+  function openIndexDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(INDEX_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(INDEX_STORE)) {
+          db.createObjectStore(INDEX_STORE, { keyPath: "k" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function loadIndexFromCache(db) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_STORE, "readonly");
+      const store = tx.objectStore(INDEX_STORE);
+      const req = store.get("cards");
+      req.onsuccess = () => resolve(req.result ? req.result.v : null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function saveIndexToCache(db, value) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_STORE, "readwrite");
+      const store = tx.objectStore(INDEX_STORE);
+      store.put({ k: "cards", v: value, ts: new Date().toISOString() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function fetchLocalIndex() {
+    // no-store ensures you get the newest file when you hit Refresh Index
+    const res = await fetch(LOCAL_INDEX_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Index fetch failed: HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async function ensureIndexLoaded({forceRefresh=false} = {}) {
+    clearError();
+    setStatus(forceRefresh ? "Refreshing index…" : "Loading index…");
+    indexPill.textContent = "Index: …";
+
+    const idb = await openIndexDB();
+
+    // 1) Try cached index first (fast)
+    if (!forceRefresh) {
+      localIndex = await loadIndexFromCache(idb);
+      if (localIndex && Array.isArray(localIndex) && localIndex.length) {
+        indexPill.textContent = `Index: ${localIndex.length.toLocaleString()}`;
+        setStatus("Ready");
+        return;
+      }
+    }
+
+    // 2) Fetch from site and cache
+    const fresh = await fetchLocalIndex();
+    if (!Array.isArray(fresh) || !fresh.length) {
+      throw new Error("Index file loaded but was empty or invalid.");
+    }
+    localIndex = fresh;
+    await saveIndexToCache(idb, localIndex);
+
+    indexPill.textContent = `Index: ${localIndex.length.toLocaleString()}`;
+    setStatus("Ready");
+  }
+
+  // ============================================================
+  // Logs DB helpers
+  // ============================================================
+  let logDb = null;
+
+  function openLogDB(){
     return new Promise((resolve,reject)=>{
       const req = indexedDB.open(DB_NAME, 4);
       req.onupgradeneeded = ()=>{
@@ -261,138 +343,43 @@
           s.createIndex("name","name",{unique:false});
           s.createIndex("loc","loc",{unique:false});
         }
-        if (!d.objectStoreNames.contains(STORE_CUSTOM)) {
-          const c = d.createObjectStore(STORE_CUSTOM, { keyPath:"id", autoIncrement:true });
-          c.createIndex("name","name",{unique:false});
-        }
       };
-      req.onsuccess = ()=>{ db = req.result; resolve(db); };
+      req.onsuccess = ()=>{ logDb = req.result; resolve(logDb); };
       req.onerror = ()=>reject(req.error);
     });
   }
 
-  function addToStore(storeName, obj){
+  function addLogEntry(obj){
     return new Promise((resolve,reject)=>{
-      const tx = db.transaction(storeName,"readwrite");
-      tx.objectStore(storeName).add(obj);
+      const tx = logDb.transaction(STORE_ENTRIES,"readwrite");
+      tx.objectStore(STORE_ENTRIES).add(obj);
       tx.oncomplete = ()=>resolve();
       tx.onerror = ()=>reject(tx.error);
     });
   }
 
-  function getAll(storeName){
+  function getAllLogs(){
     return new Promise((resolve,reject)=>{
-      const tx = db.transaction(storeName,"readonly");
-      const req = tx.objectStore(storeName).getAll();
+      const tx = logDb.transaction(STORE_ENTRIES,"readonly");
+      const req = tx.objectStore(STORE_ENTRIES).getAll();
       req.onsuccess = ()=>resolve(req.result);
       req.onerror = ()=>reject(req.error);
     });
   }
 
-  async function wipeAll(){
+  async function wipeLogs(){
     await new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE_ENTRIES,"readwrite");
+      const tx = logDb.transaction(STORE_ENTRIES,"readwrite");
       const req = tx.objectStore(STORE_ENTRIES).clear();
       req.onsuccess = ()=>resolve();
       req.onerror = ()=>reject(req.error);
     });
-    await new Promise((resolve,reject)=>{
-      const tx = db.transaction(STORE_CUSTOM,"readwrite");
-      const req = tx.objectStore(STORE_CUSTOM).clear();
-      req.onsuccess = ()=>resolve();
-      req.onerror = ()=>reject(req.error);
-    });
   }
 
-  // --------------------------
-  // API key
-  // --------------------------
-  apiKeyInput.value = localStorage.getItem("poke_api_key") || "";
-  saveKeyBtn.addEventListener("click", ()=>{
-    localStorage.setItem("poke_api_key", apiKeyInput.value.trim());
-    setStatus("Key saved");
-  });
-  clearKeyBtn.addEventListener("click", ()=>{
-    localStorage.removeItem("poke_api_key");
-    apiKeyInput.value = "";
-    setStatus("Key cleared");
-  });
-
-  // --------------------------
-  // Helpers
-  // --------------------------
-  function setStatus(s){ statusEl.textContent = s; }
-  function showError(msg){ errBox.style.display="block"; errBox.textContent = msg; }
-  function clearError(){ errBox.style.display="none"; errBox.textContent = ""; }
-  function normalize(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
-
-  function sanitizeForQuery(s){
-    return (s||"")
-      .replace(/"/g,"")
-      .replace(/\\/g,"\\\\")
-      .replace(/:/g,"\\:")
-      .trim();
-  }
-
-  function buildNameQuery(text){
-    const exact = exactToggleEl.checked;
-    const t = sanitizeForQuery(text);
-    const words = t.split(/\s+/).filter(Boolean);
-    if (!words.length) return "";
-
-    if (exact) return `name:"${t}"`;
-    if (words.length === 1) return `name:*${words[0]}*`;
-    return words.map(w => `name:*${w}*`).join(" AND ");
-  }
-
-  // --------------------------
-  // Local custom names (merge first)
-  // --------------------------
-  async function getCustomMatches(prefix){
-    const p = normalize(prefix);
-    if (!p) return [];
-    const customs = await getAll(STORE_CUSTOM);
-    return customs
-      .map(c => c.name)
-      .filter(n => normalize(n).includes(p))
-      .slice(0, 6);
-  }
-
-  // --------------------------
-  // API suggestions (name-only)
-  // --------------------------
-  async function fetchNameSuggestions(text){
-    const q = buildNameQuery(text);
-    if (!q) return [];
-
-    const url = new URL(API_BASE);
-    url.searchParams.set("q", q);
-    url.searchParams.set("pageSize", "12");
-    url.searchParams.set("page", "1");
-    url.searchParams.set("orderBy", "name");
-
-    // SPEED: no images, minimal fields
-    url.searchParams.set("select", "id,name,set,number");
-
-    const headers = {};
-    const key = (localStorage.getItem("poke_api_key") || "").trim();
-    if (key) headers["X-Api-Key"] = key;
-
-    const res = await fetch(url.toString(), { headers });
-    const body = await res.text();
-    let json = null;
-    try { json = JSON.parse(body); } catch(e) {}
-
-    if (!res.ok) {
-      const detail = json?.message || json?.error || body || `HTTP ${res.status}`;
-      throw new Error(`API ${res.status}: ${detail}`);
-    }
-    return json?.data || [];
-  }
-
-  // --------------------------
-  // Suggestions UI
-  // --------------------------
+  // ============================================================
+  // Suggestions (local only)
+  // Index items are { n: name, s: setId, no: number }
+  // ============================================================
   function hideSuggestions(){
     suggestListEl.style.display="none";
     suggestListEl.innerHTML="";
@@ -404,12 +391,10 @@
     for (const it of items){
       const div = document.createElement("div");
       div.className = "suggestItem";
-      const right = it.kind === "custom"
-        ? "custom"
-        : `${(it.setId||"")}${it.number ? " • #" + it.number : ""}`;
-      div.innerHTML = `<div>${it.name}</div><div class="suggestRight mono">${right}</div>`;
+      const right = `${it.s || ""}${it.no ? " • #" + it.no : ""}`;
+      div.innerHTML = `<div>${it.n}</div><div class="suggestRight mono">${right}</div>`;
       div.addEventListener("click", ()=>{
-        nameEl.value = it.name;
+        nameEl.value = it.n;
         hideSuggestions();
         setStatus("Picked ✓");
       });
@@ -418,77 +403,76 @@
     suggestListEl.style.display="block";
   }
 
-  // --------------------------
-  // Debounce logic
-  // --------------------------
-  let debounceTimer = null;
-  let lastToken = 0;
+  // Local search strategy:
+  // - If "Prefix first" ON: first pass matches name startsWith(q), then contains(q)
+  // - Return first N matches (sorted already in file)
+  function localSuggest(query, limit=12){
+    const q = normalize(query);
+    if (!q || q.length < 2) return [];
+    if (!localIndex || !localIndex.length) return [];
 
-  async function runSuggest(){
-    clearError();
+    const prefixFirst = !!prefixToggleEl.checked;
+    const out = [];
+    const qLower = q;
 
-    const text = nameEl.value.trim();
-    if (text.length < 3) { hideSuggestions(); setStatus("Type 3+"); return; }
-
-    const token = ++lastToken;
-    setStatus("Searching…");
-
-    const custom = await getCustomMatches(text);
-
-    try {
-      const api = await fetchNameSuggestions(text);
-      if (token !== lastToken) return;
-
-      const seen = new Set(custom.map(n => normalize(n)));
-      const merged = [];
-      for (const n of custom) merged.push({ kind:"custom", name:n, setId:"", number:"" });
-
-      for (const c of api){
-        const key = normalize(c.name);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push({
-          kind:"api",
-          name:c.name,
-          setId: c.set?.id || "",
-          number: c.number || ""
-        });
-        if (merged.length >= 12) break;
+    if (prefixFirst) {
+      // pass 1: prefix matches
+      for (const x of localIndex) {
+        const n = (x.n || "").toLowerCase();
+        if (n.startsWith(qLower)) {
+          out.push(x);
+          if (out.length >= limit) return out;
+        }
       }
-
-      showSuggestions(merged);
-      setStatus(merged.length ? "Suggestions" : "No matches");
-    } catch(e) {
-      if (token !== lastToken) return;
-      setStatus("API error");
-      showError(String(e.message || e));
-      hideSuggestions();
+      // pass 2: contains matches (skip exact duplicates)
+      for (const x of localIndex) {
+        const n = (x.n || "").toLowerCase();
+        if (!n.startsWith(qLower) && n.includes(qLower)) {
+          out.push(x);
+          if (out.length >= limit) return out;
+        }
+      }
+      return out;
     }
+
+    // contains-only mode
+    for (const x of localIndex) {
+      const n = (x.n || "").toLowerCase();
+      if (n.includes(qLower)) {
+        out.push(x);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
   }
 
+  // debounce typing
+  let debounceTimer = null;
   nameEl.addEventListener("input", ()=>{
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runSuggest, 250);
+    debounceTimer = setTimeout(()=>{
+      const text = nameEl.value.trim();
+      if (text.length < 2) { hideSuggestions(); setStatus("Ready"); return; }
+      const matches = localSuggest(text, 12);
+      showSuggestions(matches);
+      setStatus(matches.length ? "Suggestions" : "No matches");
+    }, 120);
   });
 
-  exactToggleEl.addEventListener("change", ()=>{
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runSuggest, 150);
-  });
-
+  // hide suggestions when tapping outside
   document.addEventListener("click", (e)=>{
     if (!e.target.closest(".suggestBox")) hideSuggestions();
   });
 
-  // --------------------------
-  // Save name (instant)
-  // --------------------------
+  // ============================================================
+  // Save name → location
+  // ============================================================
   async function saveName(){
     const name = nameEl.value.trim();
     if (!name) return alert("Type a name first.");
     if (!selectedLoc) return alert("Select a location first.");
 
-    await addToStore(STORE_ENTRIES, {
+    await addLogEntry({
       name,
       loc: selectedLoc,
       ts: new Date().toISOString()
@@ -510,20 +494,20 @@
     nameEl.focus();
   });
 
-  // --------------------------
-  // Custom add
-  // --------------------------
-  addCustomBtn.addEventListener("click", async ()=>{
-    const n = customNameEl.value.trim();
-    if (!n) return alert("Enter a custom name.");
-    await addToStore(STORE_CUSTOM, { name: n, created: new Date().toISOString() });
-    customNameEl.value="";
-    setStatus("Custom added");
+  // refresh index (force re-fetch + cache update)
+  refreshIndexBtn.addEventListener("click", async ()=>{
+    try {
+      await ensureIndexLoaded({forceRefresh:true});
+      setStatus("Index refreshed ✓");
+    } catch (e) {
+      showError(String(e.message || e));
+      setStatus("Index error");
+    }
   });
 
-  // --------------------------
-  // Find logged entries
-  // --------------------------
+  // ============================================================
+  // Find logged names
+  // ============================================================
   function renderResults(rows){
     resultsEl.innerHTML="";
     if (!rows.length) {
@@ -531,6 +515,7 @@
       return;
     }
 
+    // aggregate by name+loc
     const agg = new Map();
     for (const r of rows){
       const key = normalize(r.name) + "||" + r.loc;
@@ -559,33 +544,28 @@
     }
   }
 
-  async function runFind(){
+  async function runFind(showAll=false){
     const q = normalize(searchEl.value);
-    const all = await getAll(STORE_ENTRIES);
-    const hits = q ? all.filter(e => normalize(e.name).includes(q)) : all;
+    const all = await getAllLogs();
+    const hits = (showAll || !q) ? all : all.filter(e => normalize(e.name).includes(q));
     renderResults(hits);
     setStatus(`Showing ${hits.length} logs`);
   }
 
-  runSearchBtn.addEventListener("click", runFind);
+  runSearchBtn.addEventListener("click", ()=>runFind(false));
+  showAllBtn.addEventListener("click", ()=>{ searchEl.value=""; runFind(true); });
 
-  // --------------------------
+  // ============================================================
   // Export / wipe
-  // --------------------------
+  // ============================================================
   document.getElementById("exportCsv").addEventListener("click", async ()=>{
-    const entries = await getAll(STORE_ENTRIES);
-    const customs = await getAll(STORE_CUSTOM);
+    const entries = await getAllLogs();
 
-    const header = ["type","name","loc","timestamp"];
+    const header = ["name","loc","timestamp"];
     const lines = [header.join(",")];
 
     for (const e of entries){
-      const row = ["entry", e.name||"", e.loc||"", e.ts||""]
-        .map(v => `"${String(v).replaceAll('"','""')}"`);
-      lines.push(row.join(","));
-    }
-    for (const c of customs){
-      const row = ["custom", c.name||"", "", c.created||""]
+      const row = [e.name||"", e.loc||"", e.ts||""]
         .map(v => `"${String(v).replaceAll('"','""')}"`);
       lines.push(row.join(","));
     }
@@ -594,28 +574,37 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "poke_locator_export.csv";
+    a.download = "poke_locator_logs.csv";
     a.click();
     URL.revokeObjectURL(url);
   });
 
   document.getElementById("wipe").addEventListener("click", async ()=>{
-    if (confirm("This deletes ALL saved logs + custom names on this iPhone. Continue?")){
-      await wipeAll();
+    if (confirm("This deletes ALL saved logs on this iPhone. Continue?")){
+      await wipeLogs();
       setStatus("Wiped");
       resultsEl.innerHTML="";
       hideSuggestions();
     }
   });
 
-  // --------------------------
+  // ============================================================
   // Init
-  // --------------------------
+  // ============================================================
   (async ()=>{
-    await openDB();
-    setStatus("Ready");
-    if ("serviceWorker" in navigator){
-      try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
+    try {
+      await openLogDB();
+      await ensureIndexLoaded({forceRefresh:false});
+      setStatus("Ready");
+
+      // Optional service worker registration (keep if you already use it)
+      if ("serviceWorker" in navigator){
+        try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
+      }
+    } catch (e) {
+      showError(String(e.message || e));
+      setStatus("Init error");
+      indexPill.textContent = "Index: error";
     }
   })();
 </script>
