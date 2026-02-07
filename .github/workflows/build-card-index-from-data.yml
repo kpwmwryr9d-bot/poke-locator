@@ -1,0 +1,65 @@
+name: Build local card name index (from pokemon-tcg-data)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pokemon-tcg-data
+        run: |
+          rm -rf _ptcgdata
+          git clone --depth 1 https://github.com/PokemonTCG/pokemon-tcg-data.git _ptcgdata
+
+      - name: Build card-names.min.json
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const dir = path.join('_ptcgdata', 'cards', 'en');
+          const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+
+          let out = [];
+          for (const f of files) {
+            const p = path.join(dir, f);
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            for (const c of data) {
+              // compact keys to keep file small: n=name, s=setId, no=number
+              out.push({ n: c.name, s: c.set?.id || "", no: c.number || "" });
+            }
+          }
+
+          // Sort by name so suggestions look nice
+          out.sort((a,b)=> (a.n||"").localeCompare(b.n||""));
+
+          // De-dupe exact triples (name+set+number)
+          const seen = new Set();
+          const deduped = [];
+          for (const x of out) {
+            const k = `${x.n}||${x.s}||${x.no}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            deduped.push(x);
+          }
+
+          fs.writeFileSync('card-names.min.json', JSON.stringify(deduped));
+          console.log('Wrote card-names.min.json:', deduped.length, 'records from', files.length, 'files');
+          NODE
+
+      - name: Cleanup
+        run: rm -rf _ptcgdata
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add card-names.min.json
+          git commit -m "Update local card name index" || echo "No changes"
+          git push
