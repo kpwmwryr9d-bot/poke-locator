@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Poké Locator</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#111111">
+  <style>
+    :root { --pad: 12px; --radius: 12px; }
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background:#0b0b0b; color:#fff; }
+    header { padding: var(--pad); position: sticky; top:0; background: rgba(0,0,0,.85); backdrop-filter: blur(10px); border-bottom: 1px solid #222; }
+    h1 { font-size: 18px; margin:0; }
+    main { padding: var(--pad); display: grid; gap: 12px; }
+    .card { background:#131313; border:1px solid #232323; border-radius: var(--radius); padding: var(--pad); }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    button, input, select {
+      font-size: 16px; border-radius: 10px; border:1px solid #2a2a2a; background:#1c1c1c; color:#fff;
+      padding: 10px 12px;
+    }
+    button { cursor:pointer; }
+    button.primary { background:#2a5bd7; border-color:#2a5bd7; }
+    button.good { background:#1d7f43; border-color:#1d7f43; }
+    button.warn { background:#a23a3a; border-color:#a23a3a; }
+    .pill { padding: 6px 10px; border-radius: 999px; background:#1a1a1a; border:1px solid #2a2a2a; font-size: 13px; }
+    #videoWrap { position: relative; overflow:hidden; border-radius: var(--radius); border:1px solid #2a2a2a; background:#000; }
+    video { width:100%; height:auto; display:block; }
+    .overlay {
+      position:absolute; inset:0; pointer-events:none;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .frame {
+      width: 86%; height: 58%;
+      border:2px solid rgba(255,255,255,.65);
+      border-radius: 14px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.25);
+    }
+    .small { font-size: 13px; opacity:.85; }
+    .grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; }
+    .grid button { padding:12px 8px; }
+    .results { display:grid; gap:10px; }
+    .resultItem { border:1px solid #2a2a2a; border-radius: 12px; padding:10px; background:#111; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .split { display:grid; grid-template-columns: 1fr; gap:10px; }
+    @media (min-width: 720px) { .split { grid-template-columns: 1fr 1fr; } }
+  </style>
+
+  <!-- Tesseract.js (client-side OCR) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="row" style="justify-content:space-between;">
+    <h1>Poké Locator</h1>
+    <span class="pill">Standard • Row A playables • B–E chunks (75)</span>
+  </div>
+</header>
+
+<main class="split">
+  <section class="card">
+    <h2 style="margin:0 0 8px 0; font-size:16px;">Scan</h2>
+
+    <div id="videoWrap">
+      <video id="video" playsinline autoplay></video>
+      <div class="overlay"><div class="frame"></div></div>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button id="startCam" class="primary">Start Camera</button>
+      <button id="snap" class="good" disabled>Capture + OCR</button>
+      <button id="stopCam" class="warn" disabled>Stop</button>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
+      <div class="row">
+        <label class="small" for="name">Card name</label>
+        <input id="name" placeholder="(OCR fills this — you can edit)" style="flex:1;" />
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <label class="small" for="variant">Variant</label>
+        <select id="variant">
+          <option value="">(optional)</option>
+          <option value="holo">holo</option>
+          <option value="reverse">reverse</option>
+          <option value="fullart">fullart</option>
+        </select>
+        <span id="ocrStatus" class="pill">Idle</span>
+      </div>
+
+      <hr style="border:0;border-top:1px solid #262626;margin:12px 0;">
+
+      <div class="small" style="margin-bottom:8px;">Choose location</div>
+      <div class="row" style="margin-bottom:10px;">
+        <button class="pillBtn" data-loc="A-SUPPORTER">A • Supporter</button>
+        <button class="pillBtn" data-loc="A-ITEM">A • Item</button>
+        <button class="pillBtn" data-loc="A-TOOL_STADIUM">A • Tool/Stadium</button>
+        <button class="pillBtn" data-loc="A-ENERGY_LINES">A • Energy/Lines</button>
+      </div>
+
+      <div class="small" style="margin:10px 0 8px;">Bulk chunks (75-card)</div>
+      <div class="row">
+        <select id="bulkRow">
+          <option>B</option><option>C</option><option>D</option><option>E</option>
+        </select>
+        <select id="bulkChunk"></select>
+        <button id="saveBulk" class="good">Save to Bulk</button>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="savePlayable" class="good" disabled>Save to Selected Playable Bucket</button>
+        <span id="selectedLoc" class="pill mono">No playable bucket selected</span>
+      </div>
+
+      <div class="small" style="margin-top:10px; opacity:.8;">
+        Tip: For fastest scanning, keep card in the frame, good light, dark background.
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 style="margin:0 0 8px 0; font-size:16px;">Find</h2>
+
+    <div class="row">
+      <input id="search" placeholder="Search name (e.g., Iono, Rare Candy)" style="flex:1;">
+      <button id="runSearch" class="primary">Search</button>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button id="exportCsv">Export CSV</button>
+      <button id="wipe" class="warn">Wipe Local Data</button>
+      <span class="pill">Stored on this iPhone</span>
+    </div>
+
+    <div id="results" class="results" style="margin-top:12px;"></div>
+  </section>
+</main>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script>
+  // ---- Populate chunk numbers 01..14
+  const bulkChunk = document.getElementById('bulkChunk');
+  for (let i=1;i<=14;i++){
+    const opt = document.createElement('option');
+    opt.value = String(i).padStart(2,'0');
+    opt.textContent = String(i).padStart(2,'0');
+    bulkChunk.appendChild(opt);
+  }
+
+  // ---- Simple IndexedDB wrapper
+  const DB_NAME = "poke_locator_db";
+  const STORE = "entries";
+  let db;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        const store = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+        store.createIndex("name", "name", { unique: false });
+        store.createIndex("loc", "loc", { unique: false });
+        store.createIndex("name_loc", ["name","loc"], { unique: false });
+      };
+      req.onsuccess = () => { db = req.result; resolve(db); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function addEntry(entry){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).add(entry);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  function getAll(){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,"readonly");
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+
+  async function searchByName(q){
+    q = q.trim().toLowerCase();
+    const all = await getAll();
+    return all.filter(e => (e.name||"").toLowerCase().includes(q));
+  }
+
+  async function wipeAll(){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,"readwrite");
+      const req = tx.objectStore(STORE).clear();
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+
+  // ---- Camera + OCR
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const startCam = document.getElementById('startCam');
+  const stopCam = document.getElementById('stopCam');
+  const snap = document.getElementById('snap');
+  const ocrStatus = document.getElementById('ocrStatus');
+  const nameInput = document.getElementById('name');
+  const variant = document.getElementById('variant');
+
+  let stream = null;
+
+  async function startCamera(){
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    startCam.disabled = true;
+    stopCam.disabled = false;
+    snap.disabled = false;
+  }
+
+  function stopCamera(){
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    startCam.disabled = false;
+    stopCam.disabled = true;
+    snap.disabled = true;
+  }
+
+  // Crop region inside the on-screen frame (approx)
+  function captureCrop(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    canvas.width = vw; canvas.height = vh;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, vw, vh);
+
+    // frame box is 86% width, 58% height centered
+    const cropW = Math.floor(vw * 0.86);
+    const cropH = Math.floor(vh * 0.58);
+    const x = Math.floor((vw - cropW)/2);
+    const y = Math.floor((vh - cropH)/2);
+
+    const img = ctx.getImageData(x, y, cropW, cropH);
+
+    // OCR likes higher contrast; simple threshold-ish
+    const data = img.data;
+    for (let i=0; i<data.length; i+=4){
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const gray = (0.299*r + 0.587*g + 0.114*b);
+      const v = gray > 160 ? 255 : 0; // quick binary-ish
+      data[i]=data[i+1]=data[i+2]=v;
+    }
+
+    // Put into a smaller canvas for OCR
+    const o = document.createElement("canvas");
+    o.width = cropW; o.height = cropH;
+    o.getContext("2d").putImageData(img, 0, 0);
+    return o;
+  }
+
+  async function runOCR(){
+    ocrStatus.textContent = "OCR…";
+    const cropCanvas = captureCrop();
+
+    // Focus on top region where name usually is
+    const top = document.createElement("canvas");
+    top.width = cropCanvas.width;
+    top.height = Math.floor(cropCanvas.height * 0.28);
+    top.getContext("2d").drawImage(cropCanvas, 0, 0);
+
+    const { data: { text } } = await Tesseract.recognize(top, 'eng', {
+      logger: m => { /* console.log(m) */ }
+    });
+
+    // Pick the first “reasonable” line
+    const lines = text.split("\n").map(s=>s.trim()).filter(Boolean);
+    let guess = lines.find(l => l.length >= 3 && l.length <= 30) || lines[0] || "";
+    guess = guess.replace(/[^a-zA-Z0-9 ':-]/g, "").trim();
+
+    if (guess) nameInput.value = guess;
+    ocrStatus.textContent = guess ? "OCR OK" : "OCR weak — type name";
+  }
+
+  // ---- Location selection for playable row
+  const locButtons = document.querySelectorAll(".pillBtn");
+  const selectedLoc = document.getElementById("selectedLoc");
+  const savePlayable = document.getElementById("savePlayable");
+  let playableLoc = "";
+
+  locButtons.forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      playableLoc = btn.dataset.loc;
+      selectedLoc.textContent = playableLoc;
+      savePlayable.disabled = false;
+      // light highlight
+      locButtons.forEach(b=>b.style.opacity="0.7");
+      btn.style.opacity="1.0";
+    });
+  });
+
+  function bulkLoc(){
+    const r = document.getElementById("bulkRow").value;
+    const c = document.getElementById("bulkChunk").value;
+    return r + c;
+  }
+
+  async function save(loc){
+    const name = nameInput.value.trim();
+    if (!name) { alert("Enter/scan a card name first."); return; }
+    const entry = {
+      name,
+      variant: variant.value || "",
+      loc,
+      ts: new Date().toISOString()
+    };
+    await addEntry(entry);
+    ocrStatus.textContent = "Saved ✓";
+  }
+
+  // ---- Search + display (aggregated by name+loc+variant)
+  function renderResults(items){
+    const wrap = document.getElementById("results");
+    wrap.innerHTML = "";
+    if (!items.length){
+      wrap.innerHTML = `<div class="resultItem">No matches.</div>`;
+      return;
+    }
+
+    const agg = new Map();
+    for (const it of items){
+      const key = [it.name, it.variant||"", it.loc].join("||");
+      agg.set(key, (agg.get(key)||0) + 1);
+    }
+
+    const rows = Array.from(agg.entries())
+      .map(([k, qty]) => {
+        const [name, variant, loc] = k.split("||");
+        return { name, variant, loc, qty };
+      })
+      .sort((a,b)=> a.name.localeCompare(b.name) || a.loc.localeCompare(b.loc));
+
+    for (const r of rows){
+      const div = document.createElement("div");
+      div.className = "resultItem";
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div>
+            <div style="font-weight:700;">${escapeHtml(r.name)} ${r.variant ? `<span class="pill">${escapeHtml(r.variant)}</span>` : ""}</div>
+            <div class="small mono">Location: ${escapeHtml(r.loc)}</div>
+          </div>
+          <div class="pill mono">x${r.qty}</div>
+        </div>
+      `;
+      wrap.appendChild(div);
+    }
+  }
+
+  function escapeHtml(s){
+    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  }
+
+  // ---- CSV export
+  async function exportCSV(){
+    const all = await getAll();
+    if (!all.length){ alert("No data to export."); return; }
+    const header = ["name","variant","loc","timestamp"];
+    const lines = [header.join(",")];
+    for (const e of all){
+      const row = [e.name, e.variant||"", e.loc, e.ts].map(v => `"${String(v).replaceAll('"','""')}"`);
+      lines.push(row.join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type:"text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "poke_locator_export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- Wire up UI
+  startCam.addEventListener("click", async ()=>{
+    try { await startCamera(); }
+    catch(e){ alert("Camera failed. Make sure you are on HTTPS and allowed camera access."); }
+  });
+  stopCam.addEventListener("click", stopCamera);
+  snap.addEventListener("click", runOCR);
+
+  document.getElementById("saveBulk").addEventListener("click", async ()=>{ await save(bulkLoc()); });
+  savePlayable.addEventListener("click", async ()=>{ await save(playableLoc); });
+
+  document.getElementById("runSearch").addEventListener("click", async ()=>{
+    const q = document.getElementById("search").value;
+    const hits = await searchByName(q);
+    renderResults(hits);
+  });
+
+  document.getElementById("exportCsv").addEventListener("click", exportCSV);
+
+  document.getElementById("wipe").addEventListener("click", async ()=>{
+    if (confirm("This deletes ALL saved entries on this iPhone. Continue?")){
+      await wipeAll();
+      renderResults([]);
+    }
+  });
+
+  // Open DB on load
+  (async ()=>{
+    await openDB();
+    renderResults([]);
+    // Register service worker for “app-like” offline use
+    if ("serviceWorker" in navigator){
+      try { await navigator.serviceWorker.register("./service-worker.js"); } catch(e) {}
+    }
+  })();
+</script>
+</body>
+</html>
