@@ -1,0 +1,38 @@
+name: Build card-names CSV
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Convert JSON -> CSV
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('card-names.min.json','utf8'));
+          const lines = ["Name,SetId,Number"];
+          for (const x of data) {
+            // your JSON keys are {n,s,no}
+            const name = String(x.n ?? "").replace(/"/g,'""');
+            const setId = String(x.s ?? "").replace(/"/g,'""');
+            const num = String(x.no ?? "").replace(/"/g,'""');
+            lines.push(`"${name}","${setId}","${num}"`);
+          }
+          fs.writeFileSync('card-names.csv', lines.join("\n"));
+          console.log("Wrote card-names.csv", data.length);
+          NODE
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add card-names.csv
+          git commit -m "Update card-names.csv" || echo "No changes"
+          git push
